@@ -1475,7 +1475,7 @@ if (typeof module !== "undefined") module.exports = Core;
         ["bank", "Banco/institución", "text", Valid.notEmpty]];
       case "pago_movil": return [["bank", "Banco", "text", Valid.notEmpty], ["phone", "Teléfono afiliado", "tel", Valid.phone],
         ["docType", "Tipo de documento", "select:V,E,J", Valid.notEmpty], ["docNumber", "Cédula/RIF", "text", Valid.ve_doc],
-        ["holderName", "Titular", "text", Valid.notEmpty], ["concept", "Concepto (opcional)", "text", Valid.any]];
+        ["holderName", "Titular (opcional)", "text", Valid.any], ["concept", "Concepto (opcional)", "text", Valid.any]];
       case "transferencia": return COUNTRY_TX_FIELDS();
       case "psp": return [["holderName", "Titular", "text", Valid.notEmpty], ["docType", "Tipo de documento", "select:CUIT,CUIL", Valid.notEmpty],
         ["docNumber", "CUIT/CUIL", "text", Valid.cuit], ["cvu", "CVU", "text", (v) => digits(v).length >= 20 && digits(v).length <= 22],
@@ -1507,7 +1507,7 @@ if (typeof module !== "undefined") module.exports = Core;
       ["pixKeyType", "Tipo de clave Pix", "select:" + PIX_KEY_TYPES.join(","), Valid.notEmpty],
       ["pixKey", "Clave Pix", "text", (v, f) => (f.pixKeyType === "CPF" ? Valid.cpf(v) : f.pixKeyType === "CNPJ" ? Valid.cnpj(v) : f.pixKeyType === "Teléfono" ? Valid.phone(v) : f.pixKeyType === "Email" ? Valid.email(v) : Valid.notEmpty(v))],
       ["bank", "Banco/institución", "text", Valid.any]];
-    if (country === "VE" && method === "pago_movil") return [["fullName", "Nombre completo", "text", Valid.notEmpty],
+    if (country === "VE" && method === "pago_movil") return [["fullName", "Nombre completo (opcional)", "text", Valid.any],
       ["docType", "Tipo de documento", "select:" + VE_DOC_TYPES.join(","), Valid.notEmpty], ["docNumber", "Número de cédula o RIF", "text", Valid.ve_doc],
       ["bank", "Banco", "text", Valid.notEmpty], ["phone", "Teléfono afiliado", "tel", Valid.phone], ["concept", "Concepto (opcional)", "text", Valid.any]];
     if (country === "VE" && method === "transferencia") return [["fullName", "Nombre completo", "text", Valid.notEmpty], ["bank", "Banco", "text", Valid.notEmpty],
@@ -1884,7 +1884,7 @@ if (typeof module !== "undefined") module.exports = Core;
       OP.benForm = data;
       $("#b-next").disabled = true;
       try {
-        if (OP.saveBen) await saveBeneficiary(country, OP.chosenBenMethod, data, data.fullName);
+        if (OP.saveBen) await saveBeneficiary(country, OP.chosenBenMethod, data, data.fullName || data.phone || data.bank || METHOD_LABEL[OP.chosenBenMethod]);
         await patchOperation({ beneficiary: { country, method: OP.chosenBenMethod, fields: data } }, "Datos del beneficiario registrados.");
         go("review");
       } catch (e) { console.error("guardar beneficiario:", e); $("#b-err").textContent = friendlyError(e); $("#b-next").disabled = false; }
