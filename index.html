@@ -1412,6 +1412,14 @@ if (typeof module !== "undefined") module.exports = Core;
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
   const nowISO = () => new Date().toISOString();
   const opNum = (n) => "#" + String(n).padStart(6, "0");
+  /** Traduce errores de Firebase a un mensaje que ayude a diagnosticar, sin tecnicismos. */
+  function friendlyError(e) {
+    const code = e && e.code;
+    if (code === "permission-denied") return "Firebase rechazó la solicitud (permission-denied). Revisa que las reglas de seguridad estén publicadas y que la autenticación anónima esté activada.";
+    if (code === "unavailable" || code === "network-request-failed") return "No se pudo conectar. Revisa tu conexión a internet.";
+    if (code === "auth/operation-not-allowed") return "La autenticación anónima no está activada en Firebase (Authentication → Sign-in method).";
+    return "No se pudo completar la acción" + (code ? " (" + code + ")" : "") + ". " + (e && e.message ? e.message : "");
+  }
   function toast(msg) {
     const t = document.createElement("div");
     t.className = "toast"; t.setAttribute("role", "status"); t.textContent = msg;
@@ -1693,7 +1701,7 @@ if (typeof module !== "undefined") module.exports = Core;
         await createOperation(q, { name, phone, email });
         await loadAccounts();
         go("payment");
-      } catch (e) { $("#c-err").textContent = "No se pudo crear la operación. Revisa tu conexión."; $("#c-next").disabled = false; $("#c-next").textContent = "Continuar"; }
+      } catch (e) { console.error("crear operación:", e); $("#c-err").textContent = friendlyError(e); $("#c-next").disabled = false; $("#c-next").textContent = "Continuar"; }
     };
   }
 
@@ -1732,7 +1740,7 @@ if (typeof module !== "undefined") module.exports = Core;
     $("#p-next").onclick = async () => {
       $("#p-next").disabled = true;
       try { await patchOperation({ payAccountId: sel.id, payMethod: sel.method }, "Cliente inició el pago por " + METHOD_LABEL[sel.method] + "."); go("receipt"); }
-      catch (e) { toast("No se pudo continuar. Intenta de nuevo."); $("#p-next").disabled = false; }
+      catch (e) { console.error("continuar pago:", e); toast(friendlyError(e)); $("#p-next").disabled = false; }
     };
   }
 
@@ -1767,7 +1775,7 @@ if (typeof module !== "undefined") module.exports = Core;
         await patchOperation({ receipt: { url, amount: $("#r-amount").value.trim(), date: nowISO(), reference: $("#r-ref").value.trim(), note: $("#r-note").value.trim() }, status: "RECEIPT_UPLOADED" }, "Comprobante recibido.");
         OP.myBeneficiaries = await loadMyBeneficiaries(q.to.id);
         go("beneficiary");
-      } catch (e) { $("#r-err").textContent = e.message || "No se pudo guardar el comprobante."; $("#r-next").disabled = false; $("#r-next").textContent = "Continuar"; }
+      } catch (e) { console.error("subir comprobante:", e); $("#r-err").textContent = e && e.code ? friendlyError(e) : (e.message || "No se pudo guardar el comprobante."); $("#r-next").disabled = false; $("#r-next").textContent = "Continuar"; }
     };
   }
 
@@ -1814,7 +1822,7 @@ if (typeof module !== "undefined") module.exports = Core;
         if (OP.saveBen) await saveBeneficiary(country, OP.chosenBenMethod, data, data.fullName);
         await patchOperation({ beneficiary: { country, method: OP.chosenBenMethod, fields: data } }, "Datos del beneficiario registrados.");
         go("review");
-      } catch (e) { $("#b-err").textContent = "No se pudo guardar. Revisa tu conexión."; $("#b-next").disabled = false; }
+      } catch (e) { console.error("guardar beneficiario:", e); $("#b-err").textContent = friendlyError(e); $("#b-next").disabled = false; }
     };
   }
 
@@ -1838,7 +1846,7 @@ if (typeof module !== "undefined") module.exports = Core;
     $("#v-confirm").onclick = async () => {
       $("#v-confirm").disabled = true;
       try { await patchOperation({}, "Cliente confirmó la operación."); go("done"); }
-      catch (e) { $("#v-err").textContent = "No se pudo confirmar. Intenta de nuevo."; $("#v-confirm").disabled = false; }
+      catch (e) { console.error("confirmar operación:", e); $("#v-err").textContent = friendlyError(e); $("#v-confirm").disabled = false; }
     };
   }
 
@@ -1874,7 +1882,7 @@ if (typeof module !== "undefined") module.exports = Core;
           <div style="margin-top:4px">${esc(o.amounts.total)} ${esc(o.route.fromCurrency)} → ${esc(o.amounts.receive)} ${esc(o.route.toCurrency)}</div>
         </button>`).join("") : `<div class="empty">Todavía no tienes operaciones.</div>`;
       $$(".op-row", app).forEach((b) => (b.onclick = () => { OP.admin.opDetail = b.dataset.id; go("myopDetail"); }));
-    });
+    }).catch((e) => { console.error("mis operaciones:", e); $("#mo-list").innerHTML = `<div class="alert">${esc(friendlyError(e))}</div>`; });
   }
   function historyList(hist) {
     return `<div class="timeline">${(hist || []).slice().reverse().map((h) => `<div class="tl-item"><span class="tl-dot"></span><div><strong>${esc((STATUS[h.status] || {}).label || h.status)}</strong><div class="hint" style="margin:2px 0 0">${esc(h.note || "")}</div><div class="hint" style="margin:0">${esc(new Date(h.at).toLocaleString("es"))}</div></div></div>`).join("")}</div>`;
@@ -1897,7 +1905,7 @@ if (typeof module !== "undefined") module.exports = Core;
         <div class="card"><h3 style="margin-top:0">Historial</h3>${historyList(o.history)}</div>`;
       if ($("#mod-view-receipt")) $("#mod-view-receipt").onclick = () => openImagePreview(o.receipt.url);
       if ($("#mod-view-transfer")) $("#mod-view-transfer").onclick = () => openImagePreview(o.transferReceipt.url);
-    });
+    }).catch((e) => { console.error("detalle operación:", e); $("#mod-body").innerHTML = `<div class="alert">${esc(friendlyError(e))}</div>`; });
   }
 
   function screenAdminLogin(app) {
@@ -1916,7 +1924,8 @@ if (typeof module !== "undefined") module.exports = Core;
         if (ADMIN_UIDS.indexOf(cred.user.uid) === -1) { await auth.signOut(); await auth.signInAnonymously(); throw new Error("not-admin"); }
         OP.isAdmin = true; OP.myUid = cred.user.uid; go("opsList");
       } catch (e) {
-        $("#al-err").textContent = "Correo, contraseña incorrectos, o esta cuenta no es administradora.";
+        console.error("login admin:", e);
+        $("#al-err").textContent = (e && e.code && e.code.indexOf("auth/") !== 0) ? friendlyError(e) : "Correo o contraseña incorrectos, o esta cuenta no es administradora.";
         $("#al-go").disabled = false; $("#al-go").textContent = "Entrar";
       }
     };
@@ -1948,7 +1957,7 @@ if (typeof module !== "undefined") module.exports = Core;
         </button>`).join("") : `<div class="empty">No hay operaciones con este filtro.</div>`;
       $$(".op-row", app).forEach((b) => (b.onclick = () => { OP.admin.opDetail = b.dataset.id; go("opsDetail"); }));
     }
-    loadAllOperations().then((ops) => { all = ops; renderList(); }).catch(() => { $("#ol-list").innerHTML = '<div class="alert">No se pudo cargar. Revisa tu conexión.</div>'; });
+    loadAllOperations().then((ops) => { all = ops; renderList(); }).catch((e) => { console.error("listar operaciones:", e); $("#ol-list").innerHTML = `<div class="alert">${esc(friendlyError(e))}</div>`; });
   }
 
   const NEXT_ACTIONS = {
@@ -2000,7 +2009,7 @@ if (typeof module !== "undefined") module.exports = Core;
       $$("#od-actions button", app).forEach((b) => (b.onclick = async () => {
         b.disabled = true;
         const notes = { PAYMENT_REVIEW: "Administrador puso el pago en revisión.", PAYMENT_CONFIRMED: "Administrador confirmó el pago.", REJECTED: "Administrador rechazó el pago.", TRANSFER_IN_PROGRESS: "Transferencia enviada al beneficiario.", COMPLETED: "Operación completada." };
-        try { OP.op = o; OP.opId = o.id; await patchOperation({ status: b.dataset.st }, notes[b.dataset.st]); go("opsDetail"); } catch (e) { toast("No se pudo actualizar."); b.disabled = false; }
+        try { OP.op = o; OP.opId = o.id; await patchOperation({ status: b.dataset.st }, notes[b.dataset.st]); go("opsDetail"); } catch (e) { console.error("acción admin:", e); toast(friendlyError(e)); b.disabled = false; }
       }));
       if ($("#od-transfer-file")) $("#od-transfer-file").onchange = async (e) => {
         const f = e.target.files && e.target.files[0]; if (!f) return;
@@ -2013,9 +2022,10 @@ if (typeof module !== "undefined") module.exports = Core;
       };
       if ($("#od-cancel")) $("#od-cancel").onclick = async () => {
         if (!confirm("¿Cancelar esta operación?")) return;
-        OP.op = o; OP.opId = o.id; await patchOperation({ status: "CANCELLED" }, "Administrador canceló la operación."); go("opsDetail");
+        try { OP.op = o; OP.opId = o.id; await patchOperation({ status: "CANCELLED" }, "Administrador canceló la operación."); go("opsDetail"); }
+        catch (e) { console.error("cancelar operación:", e); toast(friendlyError(e)); }
       };
-    });
+    }).catch((e) => { console.error("detalle admin:", e); $("#od-body").innerHTML = `<div class="alert">${esc(friendlyError(e))}</div>`; });
   }
 
   const ACCOUNT_TYPES = { BR: ["pix"], VE: ["pago_movil", "transferencia"], AR: ["transferencia", "psp"] };
@@ -2058,7 +2068,7 @@ if (typeof module !== "undefined") module.exports = Core;
           </div>`).join("") : '<div class="empty">Todavía no registras cuentas.</div>';
         $$("[data-active]", app).forEach((el) => (el.onchange = () => db.collection("operatorAccounts").doc(el.dataset.active).update({ active: el.checked }).then(() => toast(el.checked ? "Cuenta activada" : "Cuenta desactivada"))));
         $$("[data-del]", app).forEach((el) => (el.onclick = () => { if (confirm("¿Eliminar esta cuenta?")) db.collection("operatorAccounts").doc(el.dataset.del).delete().then(renderList); }));
-      });
+      }).catch((e) => { console.error("listar cuentas:", e); $("#aa-list").innerHTML = `<div class="alert">${esc(friendlyError(e))}</div>`; });
     }
     renderList();
     $("#aa-add").onclick = async () => {
@@ -2068,7 +2078,7 @@ if (typeof module !== "undefined") module.exports = Core;
       for (const f of fields) { const k = f[0], label = f[1], validate = f[3]; if (!validate(data[k], data)) return ($("#aa-err").textContent = `Revisa el campo "${label}".`); }
       $("#aa-add").disabled = true;
       try { await db.collection("operatorAccounts").add(data); toast("Cuenta guardada ✓"); qrData = ""; $("#aa-label").value = ""; renderFields(); $("#aa-qr-prev").innerHTML = ""; renderList(); }
-      catch (e) { $("#aa-err").textContent = "No se pudo guardar."; }
+      catch (e) { console.error("guardar cuenta:", e); $("#aa-err").textContent = friendlyError(e); }
       $("#aa-add").disabled = false;
     };
   }
