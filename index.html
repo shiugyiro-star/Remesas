@@ -11,7 +11,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-storage-compat.js"></script>
 <style id="app-style">:root{
   --bg:#E6ECE9; --surface:#FFFFFF; --surface-2:#F3F6F4; --ink:#15201C; --muted:#5A6A64;
   --line:#CAD5D0; --accent:#0B6E4F; --accent-ink:#FFFFFF; --accent-soft:#D6EDE4;
@@ -200,6 +199,12 @@ select:focus,.input:focus{border-color:var(--accent);outline:none}
 .tl-item:last-child::before{display:none}
 .tl-dot{position:absolute;left:-19px;top:2px;width:10px;height:10px;border-radius:50%;background:var(--accent)}
 .op-row{display:block;border-radius:var(--radius-lg);padding:14px}
+
+/* Ver comprobante en grande */
+.img-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:30;display:flex;align-items:center;justify-content:center;padding:24px}
+.img-overlay img{max-width:100%;max-height:100%;border-radius:10px;display:block}
+.img-overlay-close{position:fixed;top:calc(16px + env(safe-area-inset-top));right:16px;width:44px;height:44px;border-radius:50%;
+  background:rgba(255,255,255,.16);color:#fff;border:0;font-size:1.15rem}
 </style>
 </head>
 <body>
@@ -1399,7 +1404,6 @@ if (typeof module !== "undefined") module.exports = Core;
   fb.initializeApp(CONFIG.firebase);
   const auth = fb.auth();
   const db = fb.firestore();
-  const storage = fb.storage ? fb.storage() : null;
   const ADMIN_UIDS = CONFIG.firebaseAdmins || [];
   const FieldValue = fb.firestore.FieldValue;
 
@@ -1589,10 +1593,48 @@ if (typeof module !== "undefined") module.exports = Core;
     const snap = await db.collection("operations").orderBy("createdAt", "desc").limit(200).get();
     return snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
   }
-  async function uploadFile(file, path) {
-    const ref = storage.ref().child(path);
-    await ref.put(file);
-    return ref.getDownloadURL();
+  /**
+   * Comprime una foto y la devuelve como data URI, reduciendo tamaño y calidad
+   * hasta quedar bajo maxBytes (los comprobantes se guardan dentro del propio
+   * documento de la operación, así que deben ser livianos: no usamos Storage
+   * porque Firebase ahora exige una cuenta de facturación para activarlo).
+   */
+  function compressImage(file, maxBytes) {
+    return new Promise((resolve, reject) => {
+      if (!/^image\//.test(file.type)) return reject(new Error("Por ahora solo se aceptan fotos (no PDF)."));
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const dims = [1280, 1000, 800, 650, 500];
+          const qualities = [0.72, 0.55, 0.4, 0.3];
+          for (const dim of dims) {
+            const scale = Math.min(1, dim / Math.max(img.width, img.height));
+            const cv = document.createElement("canvas");
+            cv.width = Math.max(1, Math.round(img.width * scale)); cv.height = Math.max(1, Math.round(img.height * scale));
+            cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+            for (const q of qualities) {
+              const data = cv.toDataURL("image/jpeg", q);
+              if (data.length <= maxBytes) return resolve(data);
+            }
+          }
+          reject(new Error("La foto sigue pesando mucho incluso comprimida. Prueba con otra foto o mejor luz."));
+        };
+        img.onerror = () => reject(new Error("No se pudo leer la imagen."));
+        img.src = reader.result;
+      };
+      reader.onerror = () => reject(new Error("No se pudo leer el archivo."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /** Ventana emergente para ver una foto en grande (comprobantes), sin depender de abrir pestañas nuevas. */
+  function openImagePreview(dataUri) {
+    const ov = document.createElement("div");
+    ov.className = "img-overlay";
+    ov.innerHTML = `<button class="img-overlay-close" aria-label="Cerrar">✕</button><img src="${dataUri}" alt="Comprobante">`;
+    ov.addEventListener("click", (e) => { if (e.target === ov || e.target.classList.contains("img-overlay-close")) ov.remove(); });
+    document.body.appendChild(ov);
   }
 
   function go(view) { OP.view = view; renderView(); window.scrollTo(0, 0); }
@@ -1699,7 +1741,8 @@ if (typeof module !== "undefined") module.exports = Core;
     app.innerHTML = header("Sube tu comprobante", "Paso 3 de 5") + `
       <div class="card stack">
         <p class="hint" style="margin:0">¿Ya realizaste el pago? Sube una foto o el PDF del comprobante.</p>
-        <label class="ghost file-btn" style="min-height:70px">${OP.receiptFile ? "Cambiar archivo" : "Tomar foto o elegir archivo"}<input type="file" accept="image/*,application/pdf" capture="environment" class="sr" id="r-file"></label>
+        <label class="ghost file-btn" style="min-height:70px">${OP.receiptFile ? "Cambiar foto" : "Tomar foto o elegir de la galería"}<input type="file" accept="image/*" capture="environment" class="sr" id="r-file"></label>
+        <div class="hint" style="margin:0">Por ahora solo se aceptan fotos (no PDF). Una captura de pantalla también funciona.</div>
         <div id="r-preview"></div>
         <label class="field"><span>Monto pagado</span><input class="input" id="r-amount" inputmode="decimal" value="${esc(q.shown.total.toString())}"></label>
         <label class="field"><span>Referencia (opcional)</span><input class="input" id="r-ref" placeholder="Número de operación, últimos dígitos..."></label>
@@ -1708,24 +1751,23 @@ if (typeof module !== "undefined") module.exports = Core;
         <button class="primary" id="r-next" style="margin-top:0">Continuar</button>
       </div>`;
     wireBack(app, () => go("payment"));
-    if (OP.receiptPreview) $("#r-preview").innerHTML = OP.receiptFile.type === "application/pdf" ? `<div class="hint">📄 ${esc(OP.receiptFile.name)}</div>` : `<img src="${OP.receiptPreview}" style="max-width:100%;border-radius:12px;margin-top:8px">`;
+    if (OP.receiptPreview) $("#r-preview").innerHTML = `<img src="${OP.receiptPreview}" style="max-width:100%;border-radius:12px;margin-top:8px">`;
     $("#r-file").onchange = (e) => {
       const f = e.target.files && e.target.files[0]; if (!f) return;
-      if (f.size > 8 * 1024 * 1024) return ($("#r-err").textContent = "El archivo es muy pesado (máx. 8 MB).");
+      if (!/^image\//.test(f.type)) return ($("#r-err").textContent = "Por ahora solo se aceptan fotos (no PDF).");
+      if (f.size > 15 * 1024 * 1024) return ($("#r-err").textContent = "La foto es muy pesada (máx. 15 MB).");
       OP.receiptFile = f; $("#r-err").textContent = "";
-      if (f.type === "application/pdf") { OP.receiptPreview = null; $("#r-preview").innerHTML = `<div class="hint">📄 ${esc(f.name)}</div>`; }
-      else { const reader = new FileReader(); reader.onload = () => { OP.receiptPreview = reader.result; $("#r-preview").innerHTML = `<img src="${reader.result}" style="max-width:100%;border-radius:12px;margin-top:8px">`; }; reader.readAsDataURL(f); }
+      const reader = new FileReader(); reader.onload = () => { OP.receiptPreview = reader.result; $("#r-preview").innerHTML = `<img src="${reader.result}" style="max-width:100%;border-radius:12px;margin-top:8px">`; }; reader.readAsDataURL(f);
     };
     $("#r-next").onclick = async () => {
       if (!OP.receiptFile) return ($("#r-err").textContent = "Sube el comprobante para continuar.");
-      $("#r-next").disabled = true; $("#r-next").textContent = "Subiendo…";
+      $("#r-next").disabled = true; $("#r-next").textContent = "Guardando…";
       try {
-        const ext = (OP.receiptFile.name.split(".").pop() || "jpg").toLowerCase();
-        const url = await uploadFile(OP.receiptFile, `receipts/${OP.myUid}/${OP.opId}/pago.${ext}`);
+        const url = await compressImage(OP.receiptFile, 350000);
         await patchOperation({ receipt: { url, amount: $("#r-amount").value.trim(), date: nowISO(), reference: $("#r-ref").value.trim(), note: $("#r-note").value.trim() }, status: "RECEIPT_UPLOADED" }, "Comprobante recibido.");
         OP.myBeneficiaries = await loadMyBeneficiaries(q.to.id);
         go("beneficiary");
-      } catch (e) { $("#r-err").textContent = "No se pudo subir el comprobante. Revisa tu conexión."; $("#r-next").disabled = false; $("#r-next").textContent = "Continuar"; }
+      } catch (e) { $("#r-err").textContent = e.message || "No se pudo guardar el comprobante."; $("#r-next").disabled = false; $("#r-next").textContent = "Continuar"; }
     };
   }
 
@@ -1848,11 +1890,13 @@ if (typeof module !== "undefined") module.exports = Core;
           <div class="kv"><span>Ruta</span><strong>${esc(o.route.fromLabel)} → ${esc(o.route.toLabel)}</strong></div>
           <div class="kv"><span>Envías</span><strong>${esc(o.amounts.total)} ${esc(o.route.fromCurrency)}</strong></div>
           <div class="kv"><span>Recibe</span><strong>${esc(o.amounts.receive)} ${esc(o.route.toCurrency)}</strong></div>
-          ${o.receipt ? `<a class="ghost" style="text-align:center;text-decoration:none;display:block" href="${esc(o.receipt.url)}" target="_blank" rel="noopener">Ver comprobante</a>` : ""}
-          ${TERMINAL.indexOf(o.status) !== -1 && o.transferReceipt ? `<a class="ghost" style="text-align:center;text-decoration:none;display:block" href="${esc(o.transferReceipt.url)}" target="_blank" rel="noopener">Ver comprobante de envío</a>` : ""}
+          ${o.receipt ? `<button class="ghost" style="width:100%" id="mod-view-receipt">Ver comprobante</button>` : ""}
+          ${TERMINAL.indexOf(o.status) !== -1 && o.transferReceipt ? `<button class="ghost" style="width:100%" id="mod-view-transfer">Ver comprobante de envío</button>` : ""}
           <a class="wa" href="${esc("https://wa.me/?text=" + encodeURIComponent(waMessage(o)))}" target="_blank" rel="noopener">📲 Compartir por WhatsApp</a>
         </div>
         <div class="card"><h3 style="margin-top:0">Historial</h3>${historyList(o.history)}</div>`;
+      if ($("#mod-view-receipt")) $("#mod-view-receipt").onclick = () => openImagePreview(o.receipt.url);
+      if ($("#mod-view-transfer")) $("#mod-view-transfer").onclick = () => openImagePreview(o.transferReceipt.url);
     });
   }
 
@@ -1939,18 +1983,20 @@ if (typeof module !== "undefined") module.exports = Core;
           <div class="kv"><span>Método</span><strong>${esc(METHOD_LABEL[o.payMethod] || "—")}</strong></div>
           ${o.receipt ? `<div class="kv"><span>Monto declarado</span><strong>${esc(o.receipt.amount)}</strong></div>
             <div class="kv"><span>Referencia</span><strong>${esc(o.receipt.reference || "—")}</strong></div>
-            <a class="ghost" style="text-align:center;text-decoration:none;display:block" href="${esc(o.receipt.url)}" target="_blank" rel="noopener">Ver comprobante</a>` : `<div class="hint">Aún no sube comprobante.</div>`}
-          ${o.transferReceipt ? `<a class="ghost" style="text-align:center;text-decoration:none;display:block;margin-top:6px" href="${esc(o.transferReceipt.url)}" target="_blank" rel="noopener">Ver comprobante de envío al beneficiario</a>` : ""}
+            <button class="ghost" id="od-view-receipt" style="width:100%">Ver comprobante</button>` : `<div class="hint">Aún no sube comprobante.</div>`}
+          ${o.transferReceipt ? `<button class="ghost" id="od-view-transfer" style="width:100%;margin-top:6px">Ver comprobante de envío al beneficiario</button>` : ""}
         </div>
         <div class="card stack"><h3 style="margin:0">Beneficiario</h3>
           ${ben ? Object.entries(ben.fields).filter((e) => e[1]).map((e) => `<div class="kv"><span>${esc(e[0])}</span><strong>${esc(e[1])}</strong></div>`).join("") : '<div class="hint">Aún no registrado.</div>'}
         </div>
         <div class="card stack"><h3 style="margin:0">Acciones</h3>
           <div id="od-actions" class="stack">${actions || '<div class="hint">Esta operación ya está en un estado final.</div>'}</div>
-          ${o.status === "PAYMENT_CONFIRMED" || o.status === "TRANSFER_IN_PROGRESS" ? `<label class="ghost file-btn">Subir comprobante de envío<input type="file" accept="image/*,application/pdf" class="sr" id="od-transfer-file"></label>` : ""}
+          ${o.status === "PAYMENT_CONFIRMED" || o.status === "TRANSFER_IN_PROGRESS" ? `<label class="ghost file-btn">Subir comprobante de envío (foto)<input type="file" accept="image/*" class="sr" id="od-transfer-file"></label>` : ""}
           ${TERMINAL.indexOf(o.status) === -1 ? `<button class="ghost" id="od-cancel" style="color:var(--danger)">Cancelar operación</button>` : ""}
         </div>
         <div class="card"><h3 style="margin-top:0">Historial</h3>${historyList(o.history)}</div>`;
+      if ($("#od-view-receipt")) $("#od-view-receipt").onclick = () => openImagePreview(o.receipt.url);
+      if ($("#od-view-transfer")) $("#od-view-transfer").onclick = () => openImagePreview(o.transferReceipt.url);
       $$("#od-actions button", app).forEach((b) => (b.onclick = async () => {
         b.disabled = true;
         const notes = { PAYMENT_REVIEW: "Administrador puso el pago en revisión.", PAYMENT_CONFIRMED: "Administrador confirmó el pago.", REJECTED: "Administrador rechazó el pago.", TRANSFER_IN_PROGRESS: "Transferencia enviada al beneficiario.", COMPLETED: "Operación completada." };
@@ -1958,13 +2004,12 @@ if (typeof module !== "undefined") module.exports = Core;
       }));
       if ($("#od-transfer-file")) $("#od-transfer-file").onchange = async (e) => {
         const f = e.target.files && e.target.files[0]; if (!f) return;
-        toast("Subiendo comprobante…");
+        toast("Guardando comprobante…");
         try {
-          const ext = (f.name.split(".").pop() || "jpg").toLowerCase();
-          const url = await uploadFile(f, `transfer-receipts/${o.id}/comprobante.${ext}`);
+          const url = await compressImage(f, 350000);
           OP.op = o; OP.opId = o.id; await patchOperation({ transferReceipt: { url } }, "Administrador subió el comprobante de envío.");
           toast("Comprobante guardado ✓"); screenAdminDetail(app);
-        } catch (err) { toast("No se pudo subir el comprobante."); }
+        } catch (err) { toast(err.message || "No se pudo guardar el comprobante."); }
       };
       if ($("#od-cancel")) $("#od-cancel").onclick = async () => {
         if (!confirm("¿Cancelar esta operación?")) return;
