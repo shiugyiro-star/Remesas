@@ -1589,9 +1589,19 @@ if (typeof module !== "undefined") module.exports = Core;
     Object.assign(OP.op, fields);
     if (historyNote) OP.op.history = (OP.op.history || []).concat([{ at: nowISO(), status: fields.status || OP.op.status, note: historyNote }]);
   }
+  /** Convierte un Timestamp de Firestore (o lo que sea) a milisegundos, para ordenar. */
+  function tsMillis(t) {
+    if (!t) return 0;
+    if (typeof t.toMillis === "function") return t.toMillis();
+    if (typeof t.seconds === "number") return t.seconds * 1000;
+    return 0;
+  }
   async function loadMyOperations() {
-    const snap = await db.collection("operations").where("clientUid", "==", OP.myUid).orderBy("createdAt", "desc").limit(50).get();
-    return snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+    // Se ordena aquí mismo (no en Firestore) para no depender de crear un índice compuesto.
+    const snap = await db.collection("operations").where("clientUid", "==", OP.myUid).limit(200).get();
+    const ops = snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+    ops.sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
+    return ops.slice(0, 50);
   }
   async function loadOperation(id) {
     const d = await db.collection("operations").doc(id).get();
