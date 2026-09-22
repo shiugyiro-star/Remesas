@@ -1949,11 +1949,7 @@ if (typeof module !== "undefined") module.exports = Core;
     };
   }
 
-  function waMessage(op) {
-    const st = STATUS[op.status] || {};
-    return `REMESAS\n\nOperación ${opNum(op.number)}\n\n${op.route.fromLabel} → ${op.route.toLabel}\n\nMonto:\n${op.amounts.total} ${op.route.fromCurrency}\n\nRecibe:\n${op.amounts.receive} ${op.route.toCurrency}\n\nEstado:\n${st.dot || ""} ${st.label || op.status}`;
-  }
-  function screenDone(app) {
+function screenDone(app) {
     const op = OP.op;
     app.innerHTML = `<header class="top"><div class="brand"><div class="mark" aria-hidden="true">✅</div>
         <div><h1>¡Listo!</h1><p class="muted">Tu operación fue creada</p></div></div></header>
@@ -1961,7 +1957,7 @@ if (typeof module !== "undefined") module.exports = Core;
         <p class="hint" style="margin:0">Número de operación</p>
         <strong style="display:block;font-family:var(--display);font-size:2.2rem;margin:6px 0">${opNum(op.number)}</strong>
         <p class="hint">Vamos a revisar tu pago y te avisaremos por WhatsApp cuando esté listo.</p>
-        <a class="wa" href="${esc(OFFICIAL_WA + "?text=" + encodeURIComponent(waMessage(op)))}" target="_blank" rel="noopener">📲 Compartir operación por WhatsApp</a>
+        <a class="wa" href="${esc(OFFICIAL_WA + "?text=" + encodeURIComponent(adminSummaryText(op)))}" target="_blank" rel="noopener">📲 Compartir operación por WhatsApp</a>
         <button class="ghost" id="d-mine" style="margin-top:14px;width:100%">Ver mis operaciones</button>
         <button class="link-btn" id="d-calc">Volver a la calculadora</button>
       </div>`;
@@ -1999,7 +1995,7 @@ if (typeof module !== "undefined") module.exports = Core;
           <div class="kv"><span>Recibe</span><strong>${esc(o.amounts.receive)} ${esc(o.route.toCurrency)}</strong></div>
           ${o.receipt ? `<button class="ghost" style="width:100%" id="mod-view-receipt">Ver comprobante</button>` : ""}
           ${TERMINAL.indexOf(o.status) !== -1 && o.transferReceipt ? `<button class="ghost" style="width:100%" id="mod-view-transfer">Ver comprobante de envío</button>` : ""}
-          <a class="wa" href="${esc(OFFICIAL_WA + "?text=" + encodeURIComponent(waMessage(o)))}" target="_blank" rel="noopener">📲 Compartir por WhatsApp</a>
+          <a class="wa" href="${esc(OFFICIAL_WA + "?text=" + encodeURIComponent(adminSummaryText(o)))}" target="_blank" rel="noopener">📲 Compartir por WhatsApp</a>
         </div>
         <div class="card"><h3 style="margin-top:0">Historial</h3>${historyList(o.history)}</div>`;
       if ($("#mod-view-receipt")) $("#mod-view-receipt").onclick = () => openImagePreview(o.receipt.url);
