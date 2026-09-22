@@ -539,6 +539,22 @@ const Core = (function () {
     const lowAmount = !!(minReq && send.lt(minReq));
     const percentApplies = state.fees.enabled && state.fees.type === "percent";
     const appliedPercent = lowAmount && percentApplies ? (state.fees.lowAmountPercent || state.fees.percent) : state.fees.percent;
+    /**
+     * La comisión normal ya vive "escondida" dentro de la tasa (modo "incluida"): no se
+     * descuenta nada, solo se muestra. Pero el RECARGO por monto bajo el mínimo (la
+     * diferencia entre 8,5% y 5,5%, por ejemplo) sí debe restarse de verdad, o el cliente
+     * vería el mismo monto de siempre pese al aviso. Solo aplica en modo "incluida":
+     * en modo "se suma al total", subir el porcentaje ya sube el total a pagar por su cuenta.
+     * Se hace ANTES de calcular la comisión mostrada, para que ese número siga cuadrando
+     * con el monto final enviado/recibido.
+     */
+    if (lowAmount && percentApplies && state.fees.mode !== "added") {
+      const extra = new D(appliedPercent).minus(state.fees.percent || 0).div(100);
+      if (extra.gt(0)) {
+        if (mode === "receive") send = send.div(new D(1).minus(extra)); // debe enviar más para igual recibir lo pedido
+        else receive = receive.times(new D(1).minus(extra)); // envía lo mismo, recibe menos
+      }
+    }
     const fee = computeFee(state, fromC.currency, send, lowAmount && percentApplies ? appliedPercent : undefined);
     const sendR = round(send, decimals, rm);
     const receiveR = round(receive, decimals, rm);
