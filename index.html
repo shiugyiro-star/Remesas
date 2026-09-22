@@ -1979,7 +1979,7 @@ if (typeof module !== "undefined") module.exports = Core;
       number, clientUid: OP.myUid, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
       customer, status: "PENDING_PAYMENT",
       route: { from: quote.from.id, to: quote.to.id, fromLabel: quote.from.flag + " " + quote.from.name, toLabel: quote.to.flag + " " + quote.to.name, fromCurrency: quote.fromCurrency, toCurrency: quote.toCurrency },
-      amounts: { send: quote.shown.send.toString(), receive: quote.shown.receive.toString(), fee: quote.shown.fee.toString(), total: quote.shown.total.toString(), hasFee: quote.hasFee, feeIncluded: quote.feeIncluded },
+      amounts: { send: quote.shown.send.toString(), receive: quote.shown.receive.toString(), fee: quote.shown.fee.toString(), total: quote.shown.total.toString(), hasFee: quote.hasFee, feeIncluded: quote.feeIncluded, appliedPercent: quote.appliedPercent, lowAmount: quote.lowAmount },
       rateSnapshot: { rate: rate ? { label: rate.fullLabel, text: rate.text, value: rate.value } : null, bcv: bcv ? { value: bcv.value } : null },
       payAccountId: null, payMethod: null, beneficiary: null, receipt: null, transferReceipt: null,
       history: [{ at: nowISO(), status: "PENDING_PAYMENT", note: "Operación creada." }]
@@ -2484,7 +2484,8 @@ function screenDone(app) {
           ${o.customer.email ? `<div class="kv"><span>Email</span><strong>${esc(o.customer.email)}</strong></div>` : ""}
           <div class="kv"><span>Ruta</span><strong>${esc(o.route.fromLabel)} → ${esc(o.route.toLabel)}</strong></div>
           <div class="kv"><span>Envía</span><strong>${esc(o.amounts.send)} ${esc(o.route.fromCurrency)}</strong></div>
-          <div class="kv"><span>Comisión</span><strong>${esc(o.amounts.fee)} ${o.amounts.feeIncluded ? "(incluida)" : ""}</strong></div>
+          <div class="kv"><span>Comisión${o.amounts.appliedPercent !== undefined ? " (" + esc(C.formatRate(o.amounts.appliedPercent).replace(/,00$/, "")) + "%)" : ""}</span><strong>${esc(o.amounts.fee)} ${o.amounts.feeIncluded ? "(incluida)" : ""}</strong></div>
+          ${o.amounts.lowAmount ? '<div class="hint" style="margin:0;color:var(--danger)">⚠️ Monto bajo el mínimo: se aplicó la comisión aumentada.</div>' : ""}
           <div class="kv"><span>Total pagado</span><strong>${esc(o.amounts.total)} ${esc(o.route.fromCurrency)}</strong></div>
           <div class="kv"><span>Recibe</span><strong>${esc(o.amounts.receive)} ${esc(o.route.toCurrency)}</strong></div>
           ${o.rateSnapshot && o.rateSnapshot.rate ? `<div class="kv"><span>Tasa usada</span><strong>${esc(o.rateSnapshot.rate.text)}</strong></div>` : ""}
