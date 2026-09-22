@@ -1543,6 +1543,17 @@ if (typeof module !== "undefined") module.exports = Core;
   const USDT_NETWORKS = ["TRC20 (Tron)", "ERC20 (Ethereum)", "BEP20 (BNB Smart Chain)", "Solana", "Polygon"];
   const USDT_PLATFORMS = ["Binance", "Bitget", "OKX", "Otro"];
   const COUNTRY_FLAG = { BR: "🇧🇷", VE: "🇻🇪", AR: "🇦🇷", ZL: "💵", UT: "🪙" };
+  // Nombres legibles para los campos de cuentas/beneficiarios (se guardan en inglés internamente).
+  const FIELD_LABEL = {
+    fullName: "Nombre completo", holderName: "Nombre del titular", personType: "Tipo de persona",
+    docType: "Tipo de documento", docNumber: "Número de documento", phone: "Teléfono/Celular",
+    bank: "Banco", concept: "Concepto", accountNumber: "Número de cuenta", accountType: "Tipo de cuenta",
+    pixKeyType: "Tipo de clave Pix", pixKey: "Clave Pix", cbu: "CBU", alias: "Alias", cvu: "CVU",
+    aliasCvu: "Alias CVU", psp: "PSP", pspName: "PSP", network: "Red", walletAddress: "Dirección de la wallet",
+    platform: "Plataforma", platformLabel: "Plataforma", userId: "ID de usuario", contactType: "Tipo de contacto",
+    contactValue: "Teléfono o email"
+  };
+  const fieldLabel = (k) => FIELD_LABEL[k] || k;
   const PIX_KEY_TYPES = ["CPF", "CNPJ", "Teléfono", "Email", "Aleatoria"];
   const VE_DOC_TYPES = ["V", "E", "J"];
   const AR_DOC_TYPES = ["DNI", "CUIT", "CUIL"];
@@ -1690,7 +1701,7 @@ if (typeof module !== "undefined") module.exports = Core;
     L.push("");
     if (ben) {
       L.push("Beneficiario (" + (METHOD_LABEL[ben.method] || ben.method) + "):");
-      Object.keys(ben.fields).forEach((k) => { if (ben.fields[k]) L.push("• " + k + ": " + ben.fields[k]); });
+      Object.keys(ben.fields).forEach((k) => { if (ben.fields[k]) L.push("• " + fieldLabel(k) + ": " + ben.fields[k]); });
     }
     return L.join("\n");
   }
@@ -2017,7 +2028,7 @@ if (typeof module !== "undefined") module.exports = Core;
       </div>
       <div class="card stack">
         <h3 style="margin:0">Beneficiario</h3>
-        ${Object.entries(ben.fields).filter((e) => e[1]).map((e) => `<div class="kv"><span>${esc(e[0])}</span><strong>${esc(e[1])}</strong></div>`).join("")}
+        ${Object.entries(ben.fields).filter((e) => e[1]).map((e) => `<div class="kv"><span>${esc(fieldLabel(e[0]))}</span><strong>${esc(e[1])}</strong></div>`).join("")}
       </div>
       <div class="err" id="v-err"></div>
       <div class="grid2"><button class="ghost" id="v-edit">Editar</button><button class="primary" id="v-confirm">Confirmar operación</button></div>`;
@@ -2172,7 +2183,7 @@ function screenDone(app) {
           ${o.transferReceipt ? `<button class="ghost" id="od-view-transfer" style="width:100%;margin-top:6px">Ver comprobante de envío al beneficiario</button>` : ""}
         </div>
         <div class="card stack"><h3 style="margin:0">Beneficiario</h3>
-          ${ben ? Object.entries(ben.fields).filter((e) => e[1]).map((e) => `<div class="kv"><span>${esc(e[0])}</span><strong>${esc(e[1])}</strong></div>`).join("") : '<div class="hint">Aún no registrado.</div>'}
+          ${ben ? Object.entries(ben.fields).filter((e) => e[1]).map((e) => `<div class="kv"><span>${esc(fieldLabel(e[0]))}</span><strong>${esc(e[1])}</strong></div>`).join("") : '<div class="hint">Aún no registrado.</div>'}
         </div>
         <div class="card stack"><h3 style="margin:0">Acciones</h3>
           <div id="od-actions" class="stack">${actions || '<div class="hint">Esta operación ya está en un estado final.</div>'}</div>
