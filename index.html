@@ -1571,24 +1571,58 @@ if (typeof module !== "undefined") module.exports = Core;
     if (u && ADMIN_UIDS.indexOf(u.uid) !== -1) { OP.isAdmin = true; startOpsWatcher(); }
   });
 
-  /** Avisa (dentro de la app y, si está disponible, como notificación de Android) cuando llega una operación nueva. */
+  /**
+   * Avisa cuando el cliente TERMINA una operación (ya con el beneficiario cargado,
+   * no apenas la empieza), porque recién ahí hay datos bancarios que mostrar.
+   */
   function startOpsWatcher() {
     if (OP._watching) return;
     OP._watching = true;
     let first = true;
+    const notified = new Set();
     db.collection("operations").orderBy("createdAt", "desc").limit(20).onSnapshot((snap) => {
-      if (first) { first = false; return; } // no avisar de las que ya existían al conectar
-      snap.docChanges().forEach((ch) => { if (ch.type === "added") notifyNewOperation(ch.doc.data()); });
+      if (first) {
+        first = false;
+        // Las que ya estaban completas antes de conectar no cuentan como "nuevas".
+        snap.docs.forEach((d) => { if (d.data().beneficiary) notified.add(d.id); });
+        return;
+      }
+      snap.docChanges().forEach((ch) => {
+        if (ch.type === "removed") return;
+        const o = ch.doc.data();
+        if (o.beneficiary && !notified.has(ch.doc.id)) { notified.add(ch.doc.id); notifyNewOperation(o); }
+      });
     }, (err) => { console.error("vigilante de operaciones:", err); });
   }
+
+  /** Mensaje completo para el administrador: número, montos y los datos del beneficiario. */
+  function adminSummaryText(o) {
+    const ben = o.beneficiary;
+    const L = [];
+    L.push("🔔 Nueva operación " + opNum(o.number));
+    L.push("");
+    L.push("Cliente: " + (o.customer && o.customer.name || "—") + (o.customer && o.customer.phone ? " (" + o.customer.phone + ")" : ""));
+    L.push("Ruta: " + o.route.fromLabel + " → " + o.route.toLabel);
+    L.push("");
+    L.push("Monto a enviar: " + o.amounts.total + " " + o.route.fromCurrency);
+    L.push("Monto a recibir: " + o.amounts.receive + " " + o.route.toCurrency);
+    L.push("");
+    if (ben) {
+      L.push("Beneficiario (" + (METHOD_LABEL[ben.method] || ben.method) + "):");
+      Object.keys(ben.fields).forEach((k) => { if (ben.fields[k]) L.push("• " + k + ": " + ben.fields[k]); });
+    }
+    return L.join("\n");
+  }
+
   function notifyNewOperation(o) {
     const title = "Nueva operación " + opNum(o.number);
-    const body = (o.customer && o.customer.name ? o.customer.name + " · " : "") + o.route.fromLabel + " → " + o.route.toLabel + " · " + o.amounts.total + " " + o.route.fromCurrency;
+    const full = adminSummaryText(o);
+    const waUrl = OFFICIAL_WA + "?text=" + encodeURIComponent(full);
     toast("🔔 " + title);
-    try { if (window.RemesasApp && window.RemesasApp.notify) window.RemesasApp.notify(title, body); } catch (e) { /* fuera de la app: se ignora */ }
+    try { if (window.RemesasApp && window.RemesasApp.notify) window.RemesasApp.notify(title, full, waUrl); } catch (e) { /* fuera de la app: se ignora */ }
     if (!window.RemesasApp && typeof Notification !== "undefined") {
-      if (Notification.permission === "granted") new Notification(title, { body });
-      else if (Notification.permission !== "denied") Notification.requestPermission().then((p) => { if (p === "granted") new Notification(title, { body }); });
+      if (Notification.permission === "granted") new Notification(title, { body: full });
+      else if (Notification.permission !== "denied") Notification.requestPermission().then((p) => { if (p === "granted") new Notification(title, { body: full }); });
     }
   }
 
