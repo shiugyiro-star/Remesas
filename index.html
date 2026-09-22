@@ -531,6 +531,15 @@ const Core = (function () {
     ops_b_new: { es: "— Nuevo beneficiario —", pt: "— Novo beneficiário —", en: "— New beneficiary —" },
     ops_b_save: { es: "Guardar estos datos para futuras operaciones", pt: "Salvar estes dados para operações futuras", en: "Save these details for future transactions" },
     ops_b_next: { es: "Continuar", pt: "Continuar", en: "Continue" },
+    ops_b_split: { es: "Repartir este pago entre varios beneficiarios", pt: "Repartir este pagamento entre vários beneficiários", en: "Split this payment among several beneficiaries" },
+    ops_b_split_total: { es: "Total a repartir: {total}", pt: "Total a repartir: {total}", en: "Total to split: {total}" },
+    ops_b_split_n: { es: "Beneficiario {n}", pt: "Beneficiário {n}", en: "Beneficiary {n}" },
+    ops_b_remove: { es: "Quitar", pt: "Remover", en: "Remove" },
+    ops_b_split_amount: { es: "Monto a recibir ({cur})", pt: "Valor a receber ({cur})", en: "Amount to receive ({cur})" },
+    ops_b_add: { es: "+ Agregar beneficiario", pt: "+ Adicionar beneficiário", en: "+ Add beneficiary" },
+    ops_b_remaining: { es: "Restante por asignar", pt: "Restante a atribuir", en: "Remaining to assign" },
+    ops_b_split_mismatch: { es: "La suma de los montos debe ser igual al total recibido.", pt: "A soma dos valores deve ser igual ao total recebido.", en: "The amounts must add up to the total received." },
+    ops_b_split_history_note: { es: "Pago repartido entre {n} beneficiarios.", pt: "Pagamento dividido entre {n} beneficiários.", en: "Payment split among {n} beneficiaries." },
     ops_b_err_save: { es: "No se pudo guardar. Revisa tu conexión.", pt: "Não foi possível salvar. Verifique sua conexão.", en: "Couldn't save. Check your connection." },
     ops_field_check: { es: 'Revisa el campo "{field}".', pt: 'Verifique o campo "{field}".', en: 'Check the "{field}" field.' },
     ops_v_title: { es: "Revisa tus datos", pt: "Revise seus dados", en: "Review your details" },
@@ -1893,20 +1902,20 @@ if (typeof module !== "undefined") module.exports = Core;
       if (first) {
         first = false;
         // Las que ya estaban completas antes de conectar no cuentan como "nuevas".
-        snap.docs.forEach((d) => { if (d.data().beneficiary) notified.add(d.id); });
+        snap.docs.forEach((d) => { if (getBeneficiaries(d.data())) notified.add(d.id); });
         return;
       }
       snap.docChanges().forEach((ch) => {
         if (ch.type === "removed") return;
         const o = ch.doc.data();
-        if (o.beneficiary && !notified.has(ch.doc.id)) { notified.add(ch.doc.id); notifyNewOperation(o); }
+        if (getBeneficiaries(o) && !notified.has(ch.doc.id)) { notified.add(ch.doc.id); notifyNewOperation(o); }
       });
     }, (err) => { console.error("vigilante de operaciones:", err); });
   }
 
-  /** Mensaje completo para el administrador: número, montos y los datos del beneficiario. */
+  /** Mensaje completo para el administrador: número, montos y los datos de cada beneficiario. */
   function adminSummaryText(o) {
-    const ben = o.beneficiary;
+    const bens = getBeneficiaries(o);
     const L = [];
     L.push("🔔 Nueva operación " + opNum(o.number));
     L.push("");
@@ -1916,9 +1925,11 @@ if (typeof module !== "undefined") module.exports = Core;
     L.push("Monto a enviar: " + o.amounts.total + " " + o.route.fromCurrency);
     L.push("Monto a recibir: " + o.amounts.receive + " " + o.route.toCurrency);
     L.push("");
-    if (ben) {
-      L.push("Beneficiario (" + (METHOD_LABEL[ben.method] || ben.method) + "):");
-      Object.keys(ben.fields).forEach((k) => { if (ben.fields[k]) L.push("• " + fieldLabel(k) + ": " + ben.fields[k]); });
+    if (bens && bens.length) {
+      bens.forEach((ben, i) => {
+        L.push((bens.length > 1 ? "Beneficiario " + (i + 1) + " — " + ben.amount + " " + o.route.toCurrency + " (" : "Beneficiario (") + (METHOD_LABEL[ben.method] || ben.method) + "):");
+        Object.keys(ben.fields).forEach((k) => { if (ben.fields[k]) L.push("• " + fieldLabel(k) + ": " + ben.fields[k]); });
+      });
     }
     return L.join("\n");
   }
@@ -2085,7 +2096,11 @@ if (typeof module !== "undefined") module.exports = Core;
     const btn = document.createElement("button");
     btn.className = "primary"; btn.style.margin = "0 18px 18px"; btn.style.width = "calc(100% - 36px)";
     btn.textContent = tt("ops_continue");
-    btn.onclick = () => { OP.draftQuote = quote; go("customer"); };
+    btn.onclick = () => {
+      OP.draftQuote = quote;
+      OP.multiBen = false; OP.benList = null; OP.chosenBenMethod = null; OP.benForm = {}; OP.saveBen = true;
+      go("customer");
+    };
     receipt.appendChild(btn);
   }
 
@@ -2203,47 +2218,117 @@ if (typeof module !== "undefined") module.exports = Core;
     }
     return `<label class="field"><span>${esc(label)}</span><input class="input" data-f="${key}" type="${type === "tel" ? "tel" : type === "email" ? "email" : "text"}" value="${esc(val || "")}"></label>`;
   }
+  /** Convierte los distintos formatos guardados (viejo singular / nuevo arreglo) en un arreglo uniforme. */
+  function getBeneficiaries(o) {
+    if (Array.isArray(o.beneficiaries)) return o.beneficiaries;
+    if (o.beneficiary) return [{ method: o.beneficiary.method, fields: o.beneficiary.fields, amount: o.amounts.receive }];
+    return null;
+  }
+  const MAX_SPLIT = 5;
   function screenBeneficiary(app) {
     const q = OP.draftQuote, country = q.to.id;
     const methods = COUNTRY_METHODS[country].recv;
     if (!OP.chosenBenMethod || methods.indexOf(OP.chosenBenMethod) === -1) OP.chosenBenMethod = methods[0];
     TX_COUNTRY = country === "AR" ? "AR" : "VE";
-    const fields = beneficiaryFields(country, OP.chosenBenMethod);
-    const saved = OP.myBeneficiaries.filter((b) => b.method === OP.chosenBenMethod);
+    if (OP.multiBen === undefined) OP.multiBen = false;
+    if (!OP.benList || !OP.benList.length) OP.benList = [{ method: OP.chosenBenMethod, amount: "", form: {} }, { method: OP.chosenBenMethod, amount: "", form: {} }];
+    const total = OP.op.amounts.receive; // string, ya redondeado
+    const D = Decimal;
+
+    if (!OP.multiBen) {
+      // ---------- Modo normal: un solo beneficiario (igual que siempre) ----------
+      const fields = beneficiaryFields(country, OP.chosenBenMethod);
+      const saved = OP.myBeneficiaries.filter((b) => b.method === OP.chosenBenMethod);
+      app.innerHTML = header(tt("ops_b_title"), tt("ops_b_step", { country: countryNameT(q.to) }), tt("ops_back")) + `
+        <div class="card stack">
+          <label class="switch"><span class="hint" style="margin:0">${esc(tt("ops_b_split"))}</span><input type="checkbox" id="b-multi"></label>
+          ${methods.length > 1 ? `<div class="chips">${methods.map((m) => `<button class="chip" data-m="${m}" aria-pressed="${m === OP.chosenBenMethod}">${esc(methodLabelT(m))}</button>`).join("")}</div>` : `<h3 style="margin:0">${esc(methodLabelT(OP.chosenBenMethod))}</h3>`}
+          ${saved.length ? `<label class="field"><span>${esc(tt("ops_b_saved"))}</span><select id="b-saved"><option value="">${esc(tt("ops_b_new"))}</option>${saved.map((b) => `<option value="${b.id}">${esc(b.label)}</option>`).join("")}</select></label>` : ""}
+          <div id="b-fields" class="stack">${fields.map((f) => fieldInput(f, OP.benForm[f[0]], true)).join("")}</div>
+          <label class="switch"><span class="hint" style="margin:0">${esc(tt("ops_b_save"))}</span><input type="checkbox" id="b-save" ${OP.saveBen ? "checked" : ""}></label>
+          <div class="err" id="b-err"></div>
+          <button class="primary" id="b-next" style="margin-top:0">${esc(tt("ops_b_next"))}</button>
+        </div>`;
+      wireBack(app, () => go("receipt"));
+      $("#b-multi").onchange = (e) => { OP.multiBen = e.target.checked; screenBeneficiary(app); };
+      $$(".chip", app).forEach((c) => (c.onclick = () => { OP.chosenBenMethod = c.dataset.m; OP.benForm = {}; screenBeneficiary(app); }));
+      if ($("#b-saved")) $("#b-saved").onchange = (e) => {
+        const b = saved.find((x) => x.id === e.target.value);
+        OP.benForm = b ? Object.assign({}, b.fields) : {};
+        $$("[data-f]", app).forEach((el) => { const v = OP.benForm[el.dataset.f]; if (v !== undefined) el.value = v; });
+      };
+      $$("[data-f]", app).forEach((el) => (el.oninput = el.onchange = () => { OP.benForm[el.dataset.f] = el.value; }));
+      $("#b-save").onchange = (e) => (OP.saveBen = e.target.checked);
+      $("#b-next").onclick = async () => {
+        const data = {};
+        fields.forEach((f) => { const k = f[0]; const el = $(`[data-f="${k}"]`, app); data[k] = el ? el.value : (OP.benForm[k] || ""); });
+        for (const f of fields) { const k = f[0], validate = f[3]; if (!validate(data[k], data)) return ($("#b-err").textContent = tt("ops_field_check", { field: fieldLabelT(k) })); }
+        OP.benForm = data;
+        $("#b-next").disabled = true;
+        try {
+          if (OP.saveBen) await saveBeneficiary(country, OP.chosenBenMethod, data, data.fullName || data.phone || data.bank || METHOD_LABEL[OP.chosenBenMethod]);
+          await patchOperation({ beneficiaries: [{ method: OP.chosenBenMethod, fields: data, amount: total }] }, "Datos del beneficiario registrados.");
+          go("review");
+        } catch (e) { console.error("guardar beneficiario:", e); $("#b-err").textContent = friendlyError(e); $("#b-next").disabled = false; }
+      };
+      return;
+    }
+
+    // ---------- Modo repartido: el mismo pago se divide entre varios beneficiarios ----------
+    const assigned = OP.benList.reduce((s, b) => s.plus(C.parseNumber(b.amount) || 0), new D(0));
+    const remaining = new D(total).minus(assigned);
     app.innerHTML = header(tt("ops_b_title"), tt("ops_b_step", { country: countryNameT(q.to) }), tt("ops_back")) + `
       <div class="card stack">
-        ${methods.length > 1 ? `<div class="chips">${methods.map((m) => `<button class="chip" data-m="${m}" aria-pressed="${m === OP.chosenBenMethod}">${esc(methodLabelT(m))}</button>`).join("")}</div>` : `<h3 style="margin:0">${esc(methodLabelT(OP.chosenBenMethod))}</h3>`}
-        ${saved.length ? `<label class="field"><span>${esc(tt("ops_b_saved"))}</span><select id="b-saved"><option value="">${esc(tt("ops_b_new"))}</option>${saved.map((b) => `<option value="${b.id}">${esc(b.label)}</option>`).join("")}</select></label>` : ""}
-        <div id="b-fields" class="stack">${fields.map((f) => fieldInput(f, OP.benForm[f[0]], true)).join("")}</div>
-        <label class="switch"><span class="hint" style="margin:0">${esc(tt("ops_b_save"))}</span><input type="checkbox" id="b-save" ${OP.saveBen ? "checked" : ""}></label>
+        <label class="switch"><span class="hint" style="margin:0">${esc(tt("ops_b_split"))}</span><input type="checkbox" id="b-multi" checked></label>
+        <div class="hint" style="margin:0">${esc(tt("ops_b_split_total", { total: total + " " + q.toCurrency }))}</div>
+      </div>
+      ${OP.benList.map((b, i) => {
+        const fields = beneficiaryFields(country, b.method);
+        return `<div class="card stack ben-block" data-idx="${i}">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <h3 style="margin:0">${esc(tt("ops_b_split_n", { n: i + 1 }))}</h3>
+            ${OP.benList.length > 2 ? `<button class="link-btn ben-remove" data-idx="${i}" style="color:var(--danger)">${esc(tt("ops_b_remove"))}</button>` : ""}
+          </div>
+          <label class="field"><span>${esc(tt("ops_b_split_amount", { cur: q.toCurrency }))}</span><input class="input ben-amount" data-idx="${i}" inputmode="decimal" value="${esc(b.amount)}"></label>
+          ${methods.length > 1 ? `<div class="chips">${methods.map((m) => `<button class="chip ben-method" data-idx="${i}" data-m="${m}" aria-pressed="${m === b.method}">${esc(methodLabelT(m))}</button>`).join("")}</div>` : ""}
+          <div class="stack ben-fields" data-idx="${i}">${fields.map((f) => fieldInput(f, b.form[f[0]], true)).join("")}</div>
+        </div>`;
+      }).join("")}
+      <div class="card stack">
+        ${OP.benList.length < MAX_SPLIT ? `<button class="ghost" id="ben-add">${esc(tt("ops_b_add"))}</button>` : ""}
+        <div class="kv" style="border:0"><span>${esc(tt("ops_b_remaining"))}</span><strong style="color:${remaining.eq(0) ? "inherit" : "var(--danger)"}">${esc(remaining.toFixed(2))} ${esc(q.toCurrency)}</strong></div>
         <div class="err" id="b-err"></div>
         <button class="primary" id="b-next" style="margin-top:0">${esc(tt("ops_b_next"))}</button>
       </div>`;
     wireBack(app, () => go("receipt"));
-    $$(".chip", app).forEach((c) => (c.onclick = () => { OP.chosenBenMethod = c.dataset.m; OP.benForm = {}; screenBeneficiary(app); }));
-    if ($("#b-saved")) $("#b-saved").onchange = (e) => {
-      const b = saved.find((x) => x.id === e.target.value);
-      OP.benForm = b ? Object.assign({}, b.fields) : {};
-      $$("[data-f]", app).forEach((el) => { const v = OP.benForm[el.dataset.f]; if (v !== undefined) el.value = v; });
-    };
-    $$("[data-f]", app).forEach((el) => (el.oninput = el.onchange = () => { OP.benForm[el.dataset.f] = el.value; }));
-    $("#b-save").onchange = (e) => (OP.saveBen = e.target.checked);
+    $("#b-multi").onchange = (e) => { OP.multiBen = e.target.checked; screenBeneficiary(app); };
+    $("#ben-add").onclick = () => { OP.benList.push({ method: methods[0], amount: "", form: {} }); screenBeneficiary(app); };
+    $$(".ben-remove", app).forEach((btn) => (btn.onclick = () => { OP.benList.splice(Number(btn.dataset.idx), 1); screenBeneficiary(app); }));
+    $$(".ben-amount", app).forEach((el) => (el.oninput = () => { OP.benList[Number(el.dataset.idx)].amount = el.value; screenBeneficiary(app); }));
+    $$(".ben-method", app).forEach((c) => (c.onclick = () => { const i = Number(c.dataset.idx); OP.benList[i].method = c.dataset.m; OP.benList[i].form = {}; screenBeneficiary(app); }));
+    $$(".ben-fields [data-f]", app).forEach((el) => (el.oninput = el.onchange = () => {
+      const i = Number(el.closest(".ben-fields").dataset.idx);
+      OP.benList[i].form[el.dataset.f] = el.value;
+    }));
     $("#b-next").onclick = async () => {
-      const data = {};
-      fields.forEach((f) => { const k = f[0]; const el = $(`[data-f="${k}"]`, app); data[k] = el ? el.value : (OP.benForm[k] || ""); });
-      for (const f of fields) { const k = f[0], validate = f[3]; if (!validate(data[k], data)) return ($("#b-err").textContent = tt("ops_field_check", { field: fieldLabelT(k) })); }
-      OP.benForm = data;
+      if (!remaining.eq(0)) return ($("#b-err").textContent = tt("ops_b_split_mismatch"));
+      const list = [];
+      for (let i = 0; i < OP.benList.length; i++) {
+        const b = OP.benList[i], fields = beneficiaryFields(country, b.method), data = {};
+        fields.forEach((f) => { const k = f[0]; const el = $(`.ben-fields[data-idx="${i}"] [data-f="${k}"]`, app); data[k] = el ? el.value : (b.form[k] || ""); });
+        for (const f of fields) { const k = f[0], validate = f[3]; if (!validate(data[k], data)) return ($("#b-err").textContent = tt("ops_field_check", { field: `${fieldLabelT(k)} (${tt("ops_b_split_n", { n: i + 1 })})` })); }
+        b.form = data; list.push({ method: b.method, fields: data, amount: C.parseNumber(b.amount) });
+      }
       $("#b-next").disabled = true;
       try {
-        if (OP.saveBen) await saveBeneficiary(country, OP.chosenBenMethod, data, data.fullName || data.phone || data.bank || METHOD_LABEL[OP.chosenBenMethod]);
-        await patchOperation({ beneficiary: { country, method: OP.chosenBenMethod, fields: data } }, "Datos del beneficiario registrados.");
+        await patchOperation({ beneficiaries: list }, "Pago repartido entre " + list.length + " beneficiarios.");
         go("review");
-      } catch (e) { console.error("guardar beneficiario:", e); $("#b-err").textContent = friendlyError(e); $("#b-next").disabled = false; }
+      } catch (e) { console.error("guardar beneficiarios:", e); $("#b-err").textContent = friendlyError(e); $("#b-next").disabled = false; }
     };
   }
 
   function screenReview(app) {
-    const q = OP.draftQuote, op = OP.op, ben = op.beneficiary;
+    const q = OP.draftQuote, op = OP.op, bens = getBeneficiaries(op) || [];
     app.innerHTML = header(tt("ops_v_title"), tt("ops_step", { n: 5 }), tt("ops_back")) + `
       <div class="card stack">
         <h3 style="margin:0">${esc(tt("ops_v_operation"))}</h3>
@@ -2251,10 +2336,10 @@ if (typeof module !== "undefined") module.exports = Core;
         <div class="kv"><span>${esc(tt("ops_v_sends"))}</span><strong>${esc(op.amounts.total)} ${esc(op.route.fromCurrency)}</strong></div>
         <div class="kv"><span>${esc(tt("ops_v_receives"))}</span><strong>${esc(op.amounts.receive)} ${esc(op.route.toCurrency)}</strong></div>
       </div>
-      <div class="card stack">
-        <h3 style="margin:0">${esc(tt("ops_v_beneficiary"))}</h3>
+      ${bens.map((ben, i) => `<div class="card stack">
+        <h3 style="margin:0">${bens.length > 1 ? esc(tt("ops_b_split_n", { n: i + 1 })) + " — " + esc(ben.amount) + " " + esc(op.route.toCurrency) : esc(tt("ops_v_beneficiary"))}</h3>
         ${Object.entries(ben.fields).filter((e) => e[1]).map((e) => `<div class="kv"><span>${esc(fieldLabelT(e[0]))}</span><strong>${esc(e[1])}</strong></div>`).join("")}
-      </div>
+      </div>`).join("")}
       <div class="err" id="v-err"></div>
       <div class="grid2"><button class="ghost" id="v-edit">${esc(tt("ops_v_edit"))}</button><button class="primary" id="v-confirm">${esc(tt("ops_v_confirm"))}</button></div>`;
     wireBack(app, () => go("beneficiary"));
@@ -2388,7 +2473,7 @@ function screenDone(app) {
     wireBack(app, () => go("opsList"));
     loadOperation(OP.admin.opDetail).then((o) => {
       if (!o) { $("#od-body").innerHTML = '<div class="empty">No se encontró.</div>'; return; }
-      const ben = o.beneficiary;
+      const bens = getBeneficiaries(o) || [];
       const actions = (NEXT_ACTIONS[o.status] || []).map((a) => `<button class="${a[2]}" data-st="${a[0]}">${a[1]}</button>`).join("");
       $("#od-body").innerHTML = `
         <div class="card stack">
@@ -2412,9 +2497,9 @@ function screenDone(app) {
             <button class="ghost" id="od-view-receipt" style="width:100%">Ver comprobante</button>` : `<div class="hint">Aún no sube comprobante.</div>`}
           ${o.transferReceipt ? `<button class="ghost" id="od-view-transfer" style="width:100%;margin-top:6px">Ver comprobante de envío al beneficiario</button>` : ""}
         </div>
-        <div class="card stack"><h3 style="margin:0">Beneficiario</h3>
-          ${ben ? Object.entries(ben.fields).filter((e) => e[1]).map((e) => `<div class="kv"><span>${esc(fieldLabel(e[0]))}</span><strong>${esc(e[1])}</strong></div>`).join("") : '<div class="hint">Aún no registrado.</div>'}
-        </div>
+        ${bens.length ? bens.map((ben, i) => `<div class="card stack"><h3 style="margin:0">${bens.length > 1 ? "Beneficiario " + (i + 1) + " — " + esc(ben.amount) + " " + esc(o.route.toCurrency) : "Beneficiario"}</h3>
+          ${Object.entries(ben.fields).filter((e) => e[1]).map((e) => `<div class="kv"><span>${esc(fieldLabel(e[0]))}</span><strong>${esc(e[1])}</strong></div>`).join("")}
+        </div>`).join("") : `<div class="card stack"><h3 style="margin:0">Beneficiario</h3><div class="hint">Aún no registrado.</div></div>`}
         <div class="card stack"><h3 style="margin:0">Acciones</h3>
           <div id="od-actions" class="stack">${actions || '<div class="hint">Esta operación ya está en un estado final.</div>'}</div>
           ${o.status === "PAYMENT_CONFIRMED" || o.status === "TRANSFER_IN_PROGRESS" ? `<label class="ghost file-btn">Subir comprobante de envío (foto)<input type="file" accept="image/*" class="sr" id="od-transfer-file"></label>` : ""}
@@ -2454,15 +2539,10 @@ function screenDone(app) {
   function screenAdminLoadPast(app) {
     const countryOpts = (sel) => Object.keys(COUNTRY_NAME).map((id) => `<option value="${id}" ${id === sel ? "selected" : ""}>${COUNTRY_FLAG[id]} ${COUNTRY_NAME[id]}</option>`).join("");
     const today = new Date().toISOString().slice(0, 10);
-    const now = new Date();
-    const nowTime = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
     app.innerHTML = header("Cargar operación anterior", "Para operaciones hechas antes de tener la app") + `
       <div class="card stack">
         <div class="hint" style="margin:0">Esto queda registrado como completada (o el estado que elijas) y entra en el Control de pagos. No pasa por el proceso del cliente ni pide comprobante.</div>
-        <div class="grid2">
-          <label class="field"><span>Fecha de la operación</span><input class="input" type="date" id="lp-date" value="${today}" max="${today}"></label>
-          <label class="field"><span>Hora</span><input class="input" type="time" id="lp-time" value="${nowTime}"></label>
-        </div>
+        <label class="field"><span>Fecha de la operación</span><input class="input" type="date" id="lp-date" value="${today}" max="${today}"></label>
         <label class="field"><span>Nombre del cliente</span><input class="input" id="lp-name"></label>
         <label class="field"><span>Teléfono (opcional)</span><input class="input" id="lp-phone" type="tel"></label>
         <div class="grid2">
@@ -2486,17 +2566,16 @@ function screenDone(app) {
       const name = $("#lp-name").value.trim(), phone = $("#lp-phone").value.trim();
       const from = $("#lp-from").value, to = $("#lp-to").value;
       const send = C.parseNumber($("#lp-send").value), receive = C.parseNumber($("#lp-receive").value), fee = C.parseNumber($("#lp-fee").value || "0");
-      const dateStr = $("#lp-date").value, timeStr = $("#lp-time").value || "12:00", status = $("#lp-status").value, note = $("#lp-note").value.trim();
+      const dateStr = $("#lp-date").value, status = $("#lp-status").value, note = $("#lp-note").value.trim();
       if (!name) return ($("#lp-err").textContent = "Escribe el nombre del cliente.");
       if (from === to) return ($("#lp-err").textContent = "El origen y el destino deben ser distintos.");
       if (send === null || Number(send) <= 0) return ($("#lp-err").textContent = "Escribe un monto enviado válido.");
       if (receive === null || Number(receive) <= 0) return ($("#lp-err").textContent = "Escribe un monto recibido válido.");
       if (fee === null || Number(fee) < 0) return ($("#lp-err").textContent = "La comisión no puede ser negativa.");
       if (!dateStr) return ($("#lp-err").textContent = "Elige la fecha de la operación.");
-      if (!timeStr) return ($("#lp-err").textContent = "Elige la hora de la operación.");
       $("#lp-save").disabled = true;
       try {
-        const ts = fb.firestore.Timestamp.fromDate(new Date(dateStr + "T" + timeStr + ":00"));
+        const ts = fb.firestore.Timestamp.fromDate(new Date(dateStr + "T12:00:00"));
         const number = await nextOperationNumber();
         const feeNum = Number(fee);
         const data = {
@@ -2505,7 +2584,7 @@ function screenDone(app) {
           route: { from, to, fromLabel: COUNTRY_FLAG[from] + " " + COUNTRY_NAME[from], toLabel: COUNTRY_FLAG[to] + " " + COUNTRY_NAME[to], fromCurrency: COUNTRY_CURRENCY[from], toCurrency: COUNTRY_CURRENCY[to] },
           amounts: { send: String(send), receive: String(receive), fee: String(feeNum), total: String(send), hasFee: feeNum > 0, feeIncluded: true },
           rateSnapshot: null, payAccountId: null, payMethod: null, beneficiary: null, receipt: null, transferReceipt: null,
-          history: [{ at: new Date(dateStr + "T" + timeStr + ":00").toISOString(), status, note: "Cargada manualmente (operación anterior a la app)." + (note ? " " + note : "") }]
+          history: [{ at: new Date(dateStr + "T12:00:00").toISOString(), status, note: "Cargada manualmente (operación anterior a la app)." + (note ? " " + note : "") }]
         };
         await db.collection("operations").add(data);
         toast("Operación " + opNum(number) + " guardada ✓");
