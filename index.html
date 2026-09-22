@@ -485,9 +485,9 @@ const Core = (function () {
   function minSendFor(state, fromId, toId, currency) {
     const D = getD();
     try {
-      if (fromId === "VE" && toId === "BR") {
+      if (fromId === "VE" && (toId === "BR" || toId === "AR")) {
         const bcv = state.rates.BCV_USD_VES; if (!bcv) return null;
-        return new D(state.fees.minVeToBrUsd || "5").times(bcv.value); // Venezuela → Brasil: su propio mínimo, no el general de Venezuela
+        return new D(state.fees.minVeToBrUsd || "5").times(bcv.value); // Venezuela → Brasil/Argentina: su propio mínimo, no el general de Venezuela
       }
       if (fromId === "ZL") return new D(state.fees.minZelleUsd || "20");
       if (fromId === "UT") return new D(state.fees.minUsdtUnits || "5");
@@ -1181,7 +1181,7 @@ if (typeof module !== "undefined") module.exports = Core;
         <div class="hint" style="margin:0">Brasil, Zelle y USDT tienen su propio mínimo fijo; Venezuela y Argentina se calculan como el equivalente en dólares, usando las tasas ya configuradas.</div>
         <div class="rate-row"><label for="fee-min-brl">Mínimo Brasil (BRL)</label>${minBrl.html}</div><div class="err" id="fee-min-brl-err"></div>
         <div class="rate-row"><label for="fee-min-usd">Mínimo Venezuela/Argentina (equivalente en USD)</label>${minUsd.html}</div><div class="err" id="fee-min-usd-err"></div>
-        <div class="rate-row"><label for="fee-min-vebr">Mínimo Venezuela → Brasil (equivalente en USD BCV)</label>${minVeBr.html}</div><div class="err" id="fee-min-vebr-err"></div>
+        <div class="rate-row"><label for="fee-min-vebr">Mínimo Venezuela → Brasil/Argentina (equivalente en USD BCV)</label>${minVeBr.html}</div><div class="err" id="fee-min-vebr-err"></div>
         <div class="rate-row"><label for="fee-min-zl">Mínimo Zelle (USD)</label>${minZl.html}</div><div class="err" id="fee-min-zl-err"></div>
         <div class="rate-row"><label for="fee-min-ut">Mínimo USDT</label>${minUt.html}</div><div class="err" id="fee-min-ut-err"></div>
         <div class="rate-row"><label for="fee-low-pct">Comisión si está por debajo (%)</label>${lowPct.html}</div><div class="err" id="fee-low-pct-err"></div>
