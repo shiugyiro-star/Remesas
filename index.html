@@ -428,7 +428,197 @@ const Core = (function () {
     return c.symbol + (c.space ? " " : "") + formatNumber(value, dec);
   }
 
-  /* ---------- Rutas ---------- */
+  /* ---------- Traducciones (calculadora y proceso del cliente) ----------
+   * El panel de Administración se queda solo en español; esto cubre lo que
+   * ve el cliente. Claves cortas -> {es, pt, en}. Uso: C.t("clave", lang, vars).
+   */
+  const T = {
+    calc_origin: { es: "Origen", pt: "Origem", en: "Origin" },
+    calc_destination: { es: "Destino", pt: "Destino", en: "Destination" },
+    calc_send_mode: { es: "💰 Quiero enviar", pt: "💰 Quero enviar", en: "💰 Send" },
+    calc_receive_mode: { es: "🎯 Quiero recibir", pt: "🎯 Quero receber", en: "🎯 Receive" },
+    calc_amount_send_label: { es: "Monto que envía el cliente", pt: "Valor que o cliente envia", en: "Amount the customer sends" },
+    calc_amount_receive_label: { es: "Monto que debe recibir", pt: "Valor que deve receber", en: "Amount to receive" },
+    calc_calculate: { es: "Calcular", pt: "Calcular", en: "Calculate" },
+    calc_empty: { es: "Escribe un monto para ver la cotización.", pt: "Digite um valor para ver a cotação.", en: "Enter an amount to see the quote." },
+    calc_subtitle: { es: "Calculadora de remesas", pt: "Calculadora de remessas", en: "Remittance calculator" },
+    calc_updated: { es: "Tasas del {date}, {time}", pt: "Taxas de {date}, {time}", en: "Rates from {date}, {time}" },
+    result_receives: { es: "Recibe", pt: "Recebe", en: "Receives" },
+    result_must_send: { es: "Debe enviar", pt: "Deve enviar", en: "Must send" },
+    result_total_to_pay: { es: "Total a pagar", pt: "Total a pagar", en: "Total to pay" },
+    result_amount_sent: { es: "Monto enviado", pt: "Valor enviado", en: "Amount sent" },
+    result_rate_used: { es: "Tasa utilizada", pt: "Taxa utilizada", en: "Rate used" },
+    result_bcv: { es: "BCV", pt: "BCV", en: "BCV" },
+    result_bcv_reference: { es: "BCV (referencia)", pt: "BCV (referência)", en: "BCV (reference)" },
+    word_reference: { es: "referencia", pt: "referência", en: "reference" },
+    result_bcv_official: { es: "BCV oficial {date}", pt: "BCV oficial {date}", en: "Official BCV {date}" },
+    result_equals: { es: "Equivale a", pt: "Equivale a", en: "Equals" },
+    result_amount_received: { es: "Monto recibido", pt: "Valor recebido", en: "Amount received" },
+    result_commission: { es: "Comisión", pt: "Comissão", en: "Fee" },
+    result_included: { es: "incluida", pt: "incluída", en: "included" },
+    result_share_whatsapp: { es: "📲 Compartir por WhatsApp", pt: "📲 Compartilhar no WhatsApp", en: "📲 Share on WhatsApp" },
+    result_footer: { es: "Tasa sujeta a cambios. Confirmar antes de operar.", pt: "Taxa sujeita a alterações. Confirme antes de operar.", en: "Rate subject to change. Confirm before proceeding." },
+    result_low_amount: { es: "Este monto es menor al mínimo recomendado (mínimo {min}). Si continúas, se aplica una comisión del {newPct}% en lugar del {oldPct}%.",
+      pt: "Este valor é menor que o mínimo recomendado (mínimo {min}). Se continuar, será aplicada uma comissão de {newPct}% em vez de {oldPct}%.",
+      en: "This amount is below the recommended minimum (minimum {min}). If you continue, a {newPct}% fee applies instead of {oldPct}%." },
+    footer_follow_us: { es: "Síguenos", pt: "Siga-nos", en: "Follow us" },
+    fab_chat: { es: "Conversa con nosotros", pt: "Fale conosco", en: "Chat with us" },
+    err_select_countries: { es: "Selecciona el país de origen y de destino.", pt: "Selecione o país de origem e de destino.", en: "Select the origin and destination country." },
+    err_same_country: { es: "El origen y el destino deben ser países distintos.", pt: "A origem e o destino devem ser países diferentes.", en: "Origin and destination must be different countries." },
+    err_invalid_amount: { es: "Escribe un monto válido, por ejemplo 500 o 1.234,56.", pt: "Digite um valor válido, por exemplo 500 ou 1.234,56.", en: "Enter a valid amount, for example 500 or 1,234.56." },
+    err_amount_gt_zero: { es: "El monto debe ser mayor que cero.", pt: "O valor deve ser maior que zero.", en: "The amount must be greater than zero." },
+    err_route_disabled: { es: "Esta ruta está desactivada por el momento.", pt: "Esta rota está desativada no momento.", en: "This route is currently disabled." },
+    err_route_missing: { es: "Esta ruta no está configurada.", pt: "Esta rota não está configurada.", en: "This route is not configured." },
+    wa_amount_sent: { es: "Monto enviado", pt: "Valor enviado", en: "Amount sent" },
+    wa_rate: { es: "Tasa", pt: "Taxa", en: "Rate" },
+    wa_bcv: { es: "BCV", pt: "BCV", en: "BCV" },
+    wa_receives: { es: "Recibe", pt: "Recebe", en: "Receives" },
+    wa_commission: { es: "Comisión", pt: "Comissão", en: "Fee" },
+    wa_included: { es: "incluida", pt: "incluída", en: "included" },
+    wa_total_to_pay: { es: "Total a pagar", pt: "Total a pagar", en: "Total to pay" },
+
+    ops_continue: { es: "Continuar con la remesa", pt: "Continuar com a remessa", en: "Continue with the transfer" },
+    ops_back: { es: "Volver", pt: "Voltar", en: "Back" },
+    ops_step: { es: "Paso {n} de 5", pt: "Passo {n} de 5", en: "Step {n} of 5" },
+    ops_c_title: { es: "Tus datos", pt: "Seus dados", en: "Your details" },
+    ops_c_intro: { es: "Esto es para identificar tu operación. No pedimos contraseñas ni códigos de ningún tipo.",
+      pt: "Isso é para identificar sua operação. Não pedimos senhas nem códigos de nenhum tipo.",
+      en: "This is to identify your transaction. We never ask for passwords or codes." },
+    ops_c_name: { es: "Nombre completo", pt: "Nome completo", en: "Full name" },
+    ops_c_phone: { es: "Teléfono / WhatsApp", pt: "Telefone / WhatsApp", en: "Phone / WhatsApp" },
+    ops_c_email: { es: "Email (opcional)", pt: "Email (opcional)", en: "Email (optional)" },
+    ops_continue_btn: { es: "Continuar", pt: "Continuar", en: "Continue" },
+    ops_creating: { es: "Creando operación…", pt: "Criando operação…", en: "Creating transaction…" },
+    ops_err_name: { es: "Escribe tu nombre completo.", pt: "Digite seu nome completo.", en: "Enter your full name." },
+    ops_err_phone: { es: "Escribe un teléfono válido, con código de país.", pt: "Digite um telefone válido, com código do país.", en: "Enter a valid phone number, with country code." },
+    ops_err_email: { es: "El email no parece válido.", pt: "O email não parece válido.", en: "That email doesn't look valid." },
+    ops_p_title: { es: "Realiza tu pago", pt: "Realize seu pagamento", en: "Make your payment" },
+    ops_p_step: { es: "Paso 2 de 5 · en {country}", pt: "Passo 2 de 5 · em {country}", en: "Step 2 of 5 · in {country}" },
+    ops_method_label: { es: "Método", pt: "Método", en: "Method" },
+    ops_p_no_accounts: { es: "Por ahora no hay una cuenta activa para recibir pagos desde {country}. Escríbenos por WhatsApp para coordinar.",
+      pt: "No momento não há uma conta ativa para receber pagamentos de {country}. Escreva-nos no WhatsApp para combinar.",
+      en: "There isn't an active account to receive payments from {country} right now. Message us on WhatsApp to arrange it." },
+    ops_p_copy_key: { es: "Copiar clave", pt: "Copiar chave", en: "Copy key" },
+    ops_p_copy_all: { es: "Copiar datos", pt: "Copiar dados", en: "Copy details" },
+    ops_p_hint: { es: "Realiza el pago por tu cuenta y luego toca Continuar para subir el comprobante.",
+      pt: "Realize o pagamento por conta própria e depois toque em Continuar para enviar o comprovante.",
+      en: "Make the payment on your own, then tap Continue to upload the receipt." },
+    ops_p_next: { es: "Ya pagué, continuar", pt: "Já paguei, continuar", en: "I've paid, continue" },
+    ops_p_copied_key: { es: "Clave copiada", pt: "Chave copiada", en: "Key copied" },
+    ops_p_copied_all: { es: "Datos copiados", pt: "Dados copiados", en: "Details copied" },
+    ops_p_copy_error: { es: "No se pudo copiar", pt: "Não foi possível copiar", en: "Couldn't copy" },
+    ops_r_title: { es: "Sube tu comprobante", pt: "Envie seu comprovante", en: "Upload your receipt" },
+    ops_r_intro: { es: "¿Ya realizaste el pago? Sube una foto o el PDF del comprobante.",
+      pt: "Já fez o pagamento? Envie uma foto ou o PDF do comprovante.",
+      en: "Already made the payment? Upload a photo of the receipt." },
+    ops_r_pick: { es: "Tomar foto o elegir de la galería", pt: "Tirar foto ou escolher da galeria", en: "Take a photo or choose from gallery" },
+    ops_r_change: { es: "Cambiar foto", pt: "Trocar foto", en: "Change photo" },
+    ops_r_photo_only: { es: "Por ahora solo se aceptan fotos (no PDF). Una captura de pantalla también funciona.",
+      pt: "Por enquanto só aceitamos fotos (não PDF). Uma captura de tela também funciona.",
+      en: "For now only photos are accepted (no PDF). A screenshot also works." },
+    ops_r_amount: { es: "Monto pagado", pt: "Valor pago", en: "Amount paid" },
+    ops_r_reference: { es: "Referencia (opcional)", pt: "Referência (opcional)", en: "Reference (optional)" },
+    ops_r_reference_ph: { es: "Número de operación, últimos dígitos...", pt: "Número da operação, últimos dígitos...", en: "Transaction number, last digits..." },
+    ops_r_note: { es: "Observación (opcional)", pt: "Observação (opcional)", en: "Note (optional)" },
+    ops_r_next: { es: "Continuar", pt: "Continuar", en: "Continue" },
+    ops_r_uploading: { es: "Subiendo…", pt: "Enviando…", en: "Uploading…" },
+    ops_r_err_required: { es: "Sube el comprobante para continuar.", pt: "Envie o comprovante para continuar.", en: "Upload the receipt to continue." },
+    ops_r_err_type: { es: "Por ahora solo se aceptan fotos (no PDF).", pt: "Por enquanto só aceitamos fotos (não PDF).", en: "For now only photos are accepted (no PDF)." },
+    ops_r_err_size: { es: "La foto es muy pesada (máx. 15 MB).", pt: "A foto é muito grande (máx. 15 MB).", en: "The photo is too large (max 15 MB)." },
+    ops_b_title: { es: "¿Dónde quieres recibir?", pt: "Onde você quer receber?", en: "Where to receive it?" },
+    ops_b_step: { es: "Paso 4 de 5 · en {country}", pt: "Passo 4 de 5 · em {country}", en: "Step 4 of 5 · in {country}" },
+    ops_b_saved: { es: "Usar un beneficiario guardado", pt: "Usar um beneficiário salvo", en: "Use a saved beneficiary" },
+    ops_b_new: { es: "— Nuevo beneficiario —", pt: "— Novo beneficiário —", en: "— New beneficiary —" },
+    ops_b_save: { es: "Guardar estos datos para futuras operaciones", pt: "Salvar estes dados para operações futuras", en: "Save these details for future transactions" },
+    ops_b_next: { es: "Continuar", pt: "Continuar", en: "Continue" },
+    ops_b_err_save: { es: "No se pudo guardar. Revisa tu conexión.", pt: "Não foi possível salvar. Verifique sua conexão.", en: "Couldn't save. Check your connection." },
+    ops_field_check: { es: 'Revisa el campo "{field}".', pt: 'Verifique o campo "{field}".', en: 'Check the "{field}" field.' },
+    ops_v_title: { es: "Revisa tus datos", pt: "Revise seus dados", en: "Review your details" },
+    ops_v_step: { es: "Paso 5 de 5", pt: "Passo 5 de 5", en: "Step 5 of 5" },
+    ops_v_operation: { es: "🔎 Operación", pt: "🔎 Operação", en: "🔎 Transaction" },
+    ops_v_route: { es: "Ruta", pt: "Rota", en: "Route" },
+    ops_v_sends: { es: "Envías", pt: "Envia", en: "You send" },
+    ops_v_receives: { es: "Recibe", pt: "Recebe", en: "Receives" },
+    ops_v_beneficiary: { es: "Beneficiario", pt: "Beneficiário", en: "Beneficiary" },
+    ops_v_edit: { es: "Editar", pt: "Editar", en: "Edit" },
+    ops_v_confirm: { es: "Confirmar operación", pt: "Confirmar operação", en: "Confirm transaction" },
+    ops_v_err: { es: "No se pudo confirmar. Intenta de nuevo.", pt: "Não foi possível confirmar. Tente novamente.", en: "Couldn't confirm. Please try again." },
+    ops_d_title: { es: "¡Listo!", pt: "Pronto!", en: "All done!" },
+    ops_d_subtitle: { es: "Tu operación fue creada", pt: "Sua operação foi criada", en: "Your transaction was created" },
+    ops_d_number: { es: "Número de operación", pt: "Número da operação", en: "Transaction number" },
+    ops_d_message: { es: "Vamos a revisar tu pago y te avisaremos por WhatsApp cuando esté listo.",
+      pt: "Vamos revisar seu pagamento e avisaremos você pelo WhatsApp quando estiver pronto.",
+      en: "We'll review your payment and let you know on WhatsApp once it's ready." },
+    ops_d_share: { es: "📲 Compartir operación por WhatsApp", pt: "📲 Compartilhar operação no WhatsApp", en: "📲 Share transaction on WhatsApp" },
+    ops_d_myops: { es: "Ver mis operaciones", pt: "Ver minhas operações", en: "View my transactions" },
+    ops_d_calc: { es: "Volver a la calculadora", pt: "Voltar à calculadora", en: "Back to calculator" },
+    ops_mo_title: { es: "Mis operaciones", pt: "Minhas operações", en: "My transactions" },
+    ops_mo_empty: { es: "Todavía no tienes operaciones.", pt: "Você ainda não tem operações.", en: "You don't have any transactions yet." },
+    ops_mo_loading: { es: "Cargando…", pt: "Carregando…", en: "Loading…" },
+    ops_mod_title: { es: "Operación", pt: "Operação", en: "Transaction" },
+    ops_mod_not_found: { es: "No se encontró la operación.", pt: "Operação não encontrada.", en: "Transaction not found." },
+    ops_mod_view_receipt: { es: "Ver comprobante", pt: "Ver comprovante", en: "View receipt" },
+    ops_mod_view_transfer: { es: "Ver comprobante de envío", pt: "Ver comprovante de envio", en: "View transfer receipt" },
+    ops_mod_share: { es: "📲 Compartir por WhatsApp", pt: "📲 Compartilhar no WhatsApp", en: "📲 Share on WhatsApp" },
+    ops_mod_history: { es: "Historial", pt: "Histórico", en: "History" },
+    ops_generic_error: { es: "No se pudo completar la acción.", pt: "Não foi possível concluir a ação.", en: "Couldn't complete the action." },
+
+    status_pending_payment: { es: "Pendiente de pago", pt: "Pendente de pagamento", en: "Pending payment" },
+    status_receipt_uploaded: { es: "Comprobante recibido", pt: "Comprovante recebido", en: "Receipt received" },
+    status_payment_review: { es: "Pago en revisión", pt: "Pagamento em revisão", en: "Payment under review" },
+    status_payment_confirmed: { es: "Pago confirmado", pt: "Pagamento confirmado", en: "Payment confirmed" },
+    status_transfer_in_progress: { es: "Transferencia en proceso", pt: "Transferência em andamento", en: "Transfer in progress" },
+    status_completed: { es: "Operación completada", pt: "Operação concluída", en: "Transaction completed" },
+    status_rejected: { es: "Rechazada", pt: "Rejeitada", en: "Rejected" },
+    status_cancelled: { es: "Cancelada", pt: "Cancelada", en: "Cancelled" },
+
+    field_fullName: { es: "Nombre completo", pt: "Nome completo", en: "Full name" },
+    field_holderName: { es: "Nombre del titular", pt: "Nome do titular", en: "Account holder name" },
+    field_personType: { es: "Tipo de persona", pt: "Tipo de pessoa", en: "Person type" },
+    field_docType: { es: "Tipo de documento", pt: "Tipo de documento", en: "Document type" },
+    field_docNumber: { es: "Número de documento", pt: "Número do documento", en: "Document number" },
+    field_phone: { es: "Teléfono/Celular", pt: "Telefone/Celular", en: "Phone/Mobile" },
+    field_bank: { es: "Banco", pt: "Banco", en: "Bank" },
+    field_concept: { es: "Concepto", pt: "Conceito", en: "Concept" },
+    field_accountNumber: { es: "Número de cuenta", pt: "Número da conta", en: "Account number" },
+    field_accountType: { es: "Tipo de cuenta", pt: "Tipo de conta", en: "Account type" },
+    field_pixKeyType: { es: "Tipo de clave Pix", pt: "Tipo de chave Pix", en: "Pix key type" },
+    field_pixKey: { es: "Clave Pix", pt: "Chave Pix", en: "Pix key" },
+    field_cbu: { es: "CBU", pt: "CBU", en: "CBU" },
+    field_alias: { es: "Alias", pt: "Alias", en: "Alias" },
+    field_cvu: { es: "CVU", pt: "CVU", en: "CVU" },
+    field_aliasCvu: { es: "Alias CVU", pt: "Alias CVU", en: "CVU Alias" },
+    field_psp: { es: "PSP", pt: "PSP", en: "PSP" },
+    field_pspName: { es: "PSP", pt: "PSP", en: "PSP" },
+    field_network: { es: "Red", pt: "Rede", en: "Network" },
+    field_walletAddress: { es: "Dirección de la wallet", pt: "Endereço da carteira", en: "Wallet address" },
+    field_platform: { es: "Plataforma", pt: "Plataforma", en: "Platform" },
+    field_platformLabel: { es: "Plataforma", pt: "Plataforma", en: "Platform" },
+    field_userId: { es: "ID de usuario", pt: "ID do usuário", en: "User ID" },
+    field_contactType: { es: "Tipo de contacto", pt: "Tipo de contato", en: "Contact type" },
+    field_contactValue: { es: "Teléfono o email", pt: "Telefone ou email", en: "Phone or email" },
+    method_pix: { es: "PIX", pt: "PIX", en: "PIX" },
+    method_pago_movil: { es: "Pago Móvil", pt: "Pago Móvil", en: "Pago Móvil (mobile payment)" },
+    method_transferencia: { es: "Transferencia bancaria", pt: "Transferência bancária", en: "Bank transfer" },
+    method_psp: { es: "Cuenta de PSP", pt: "Conta de PSP", en: "PSP account" },
+    method_cbu: { es: "CBU", pt: "CBU", en: "CBU" },
+    method_alias: { es: "Alias", pt: "Alias", en: "Alias" },
+    method_cvu: { es: "CVU", pt: "CVU", en: "CVU" },
+    method_alias_cvu: { es: "Alias CVU", pt: "Alias CVU", en: "CVU Alias" },
+    method_zelle: { es: "Zelle", pt: "Zelle", en: "Zelle" },
+    method_usdt_wallet: { es: "Wallet USDT (externa)", pt: "Carteira USDT (externa)", en: "USDT wallet (external)" },
+    method_usdt_id: { es: "ID en la misma plataforma", pt: "ID na mesma plataforma", en: "ID on the same platform" }
+  };
+  const COUNTRY_NAME_EN = { BR: "Brazil" }; // el resto se escribe igual en los 3 idiomas
+  function t(key, lang, vars) {
+    const row = T[key];
+    let s = (row && (row[lang] || row.es)) || key;
+    if (vars) for (const k in vars) s = s.split("{" + k + "}").join(vars[k]);
+    return s;
+  }
+  function countryNameFor(id, name, lang) { return lang === "en" && COUNTRY_NAME_EN[id] ? COUNTRY_NAME_EN[id] : name; }
+
+
   const country = (state, id) => state.countries.find((c) => c.id === id);
   const findRoute = (state, from, to) => state.routes.find((r) => r.from === from && r.to === to);
 
@@ -588,20 +778,21 @@ const Core = (function () {
   }
 
   /* ---------- Mensaje de WhatsApp ---------- */
-  function whatsappText(state, q) {
+  function whatsappText(state, q, lang) {
+    lang = lang || "es";
     const L = [];
-    L.push(`${q.from.flag} ${q.from.name.toUpperCase()} → ${q.to.flag} ${q.to.name.toUpperCase()}`);
+    L.push(`${q.from.flag} ${countryNameFor(q.from.id, q.from.name, lang).toUpperCase()} → ${q.to.flag} ${countryNameFor(q.to.id, q.to.name, lang).toUpperCase()}`);
     L.push("");
-    L.push(`💰 Monto enviado: ${formatMoney(state, q.fromCurrency, q.shown.send)}`);
+    L.push(`💰 ${t("wa_amount_sent", lang)}: ${formatMoney(state, q.fromCurrency, q.shown.send)}`);
     for (const r of q.ratesUsed) {
-      L.push(r.key === "BCV_USD_VES" ? `🏦 BCV: ${formatRate(r.value)}` : `💱 Tasa: ${r.text}`);
+      L.push(r.key === "BCV_USD_VES" ? `🏦 ${t("wa_bcv", lang)}: ${formatRate(r.value)}` : `💱 ${t("wa_rate", lang)}: ${r.text}`);
     }
     if (q.hasFee) {
-      const pct = state.fees.type === "percent" ? ` (${formatRate(state.fees.percent)}%)` : "";
-      L.push(`🧾 Comisión${pct}${q.feeIncluded ? " incluida" : ""}: ${formatMoney(state, q.fromCurrency, q.shown.fee)}`);
-      L.push(`💳 Total a pagar: ${formatMoney(state, q.fromCurrency, q.shown.total)}`);
+      const pct = state.fees.type === "percent" ? ` (${formatRate(q.appliedPercent !== undefined ? q.appliedPercent : state.fees.percent)}%)` : "";
+      L.push(`🧾 ${t("wa_commission", lang)}${pct}${q.feeIncluded ? " " + t("wa_included", lang) : ""}: ${formatMoney(state, q.fromCurrency, q.shown.fee)}`);
+      L.push(`💳 ${t("wa_total_to_pay", lang)}: ${formatMoney(state, q.fromCurrency, q.shown.total)}`);
     }
-    L.push(`💵 Recibe: ${formatMoney(state, q.toCurrency, q.shown.receive)}`);
+    L.push(`💵 ${t("wa_receives", lang)}: ${formatMoney(state, q.toCurrency, q.shown.receive)}`);
     L.push("");
     if (state.business.footer) L.push(state.business.footer);
     if (state.business.name) L.push(`— ${state.business.name}`);
@@ -688,7 +879,7 @@ const Core = (function () {
     safeUrl, buildDocument, DEFAULT_STATE, SCHEMA_VERSION, migrate, clone, parseNumber, round,
     formatNumber, formatRate, formatMoney, rateText, country, findRoute, validateRoute,
     applySteps, computeFee, quote, whatsappText, whatsappUrl, pushHistory,
-    snapshotEntry, BCV_PROVIDERS, validLiveBcv
+    snapshotEntry, BCV_PROVIDERS, validLiveBcv, t, countryNameFor
   };
 })();
 if (typeof module !== "undefined") module.exports = Core;
@@ -780,8 +971,17 @@ if (typeof module !== "undefined") module.exports = Core;
     view: "calc", from: last.from || "BR", to: last.to || "VE", mode: last.mode || "send",
     amount: "", quote: null, error: null,
     isAdmin: false, artifact: null,
-    tab: "tasas", draft: null, dirty: false, histDate: "", saving: false
+    tab: "tasas", draft: null, dirty: false, histDate: "", saving: false,
+    lang: store.get("lang") || "es"
   };
+  const tt = (key, vars) => C.t(key, ui.lang, vars);
+  const LANGS = ["es", "pt", "en"];
+  const LANG_LABEL = { es: "ES", pt: "PT", en: "EN" };
+  function cycleLang() {
+    ui.lang = LANGS[(LANGS.indexOf(ui.lang) + 1) % LANGS.length];
+    store.set("lang", ui.lang);
+    if (ui.view === "calc") renderCalc();
+  }
 
   /* ---------- Utilidades ---------- */
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -792,7 +992,7 @@ if (typeof module !== "undefined") module.exports = Core;
   const fmtTime = (iso) => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
   const dayKey = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
   const toInput = (v) => { try { return C.formatRate(v).replace(/(,\d*?)0+$/, "$1").replace(/,$/, ""); } catch (e) { return String(v); } };
-  const flagName = (id, st) => { const c = C.country(st || STATE, id); return c ? `${c.flag} ${c.name}` : id; };
+  const flagName = (id, st, lang) => { const c = C.country(st || STATE, id); return c ? `${c.flag} ${C.countryNameFor(id, c.name, lang || "es")}` : id; };
   const shortRoute = (key, st) => {
     if (key === "BCV_USD_VES") return "BCV";
     const r = (st || STATE).routes.find((rt) => rt.steps.some((s) => s.rate === key));
@@ -853,8 +1053,8 @@ if (typeof module !== "undefined") module.exports = Core;
     const cur = ui.mode === "send" ? fromC : toC;
     const curSym = cur ? STATE.currencies[cur.currency].symbol : "";
     const logo = STATE.business.logo && /^data:image\//.test(STATE.business.logo) ? STATE.business.logo : "";
-    const updated = STATE.updatedAt ? "Tasas del " + fmtDate(STATE.updatedAt) + ", " + fmtTime(STATE.updatedAt) : "Calculadora de remesas";
-    const opt = (ids, sel) => ids.map((id) => `<option value="${esc(id)}"${id === sel ? " selected" : ""}>${esc(flagName(id))}</option>`).join("");
+    const updated = STATE.updatedAt ? tt("calc_updated", { date: fmtDate(STATE.updatedAt), time: fmtTime(STATE.updatedAt) }) : tt("calc_subtitle");
+    const opt = (ids, sel) => ids.map((id) => `<option value="${esc(id)}"${id === sel ? " selected" : ""}>${esc(flagName(id, STATE, ui.lang))}</option>`).join("");
 
     app.innerHTML = `
       <header class="top${logo ? " has-logo" : ""}">
@@ -864,6 +1064,7 @@ if (typeof module !== "undefined") module.exports = Core;
           <div><h1>${esc(STATE.business.name || "Remesas")}</h1>
           <p class="muted">${esc(updated)}</p></div></div>`}
         <div class="top-actions">
+          <button class="icon-btn" id="lang" aria-label="Language / Idioma">${LANG_LABEL[ui.lang]}</button>
           ${window.RemesasOps ? '<button class="icon-btn" id="myops-btn" aria-label="Mis operaciones">📋</button>' : ""}
           <button class="icon-btn" id="theme" aria-label="Cambiar tema claro u oscuro">◐</button>
           ${ui.isAdmin ? '<button class="icon-btn" id="go-admin" aria-label="Administración de tasas">⚙️</button>' : ""}
@@ -871,25 +1072,26 @@ if (typeof module !== "undefined") module.exports = Core;
       </header>
       <section class="panel">
         <div class="route">
-          <label class="field"><span>Origen</span><select id="from">${opt(origins, ui.from)}</select></label>
-          <button class="swap" id="swap" aria-label="Invertir origen y destino" ${destinations(ui.to).includes(ui.from) ? "" : "disabled"}>⇄</button>
-          <label class="field"><span>Destino</span><select id="to">${opt(dests, ui.to)}</select></label>
+          <label class="field"><span>${tt("calc_origin")}</span><select id="from">${opt(origins, ui.from)}</select></label>
+          <button class="swap" id="swap" aria-label="⇄" ${destinations(ui.to).includes(ui.from) ? "" : "disabled"}>⇄</button>
+          <label class="field"><span>${tt("calc_destination")}</span><select id="to">${opt(dests, ui.to)}</select></label>
         </div>
-        <div class="seg" role="group" aria-label="Tipo de cálculo">
-          <button data-mode="send" aria-pressed="${ui.mode === "send"}">💰 Quiero enviar</button>
-          <button data-mode="receive" aria-pressed="${ui.mode === "receive"}">🎯 Quiero recibir</button>
+        <div class="seg" role="group" aria-label="mode">
+          <button data-mode="send" aria-pressed="${ui.mode === "send"}">${tt("calc_send_mode")}</button>
+          <button data-mode="receive" aria-pressed="${ui.mode === "receive"}">${tt("calc_receive_mode")}</button>
         </div>
-        <label class="field"><span>${ui.mode === "send" ? "Monto que envía el cliente" : "Monto que debe recibir"} (${esc(cur ? cur.currency : "")})</span>
+        <label class="field"><span>${ui.mode === "send" ? tt("calc_amount_send_label") : tt("calc_amount_receive_label")} (${esc(cur ? cur.currency : "")})</span>
           <div class="money"><span class="cur">${esc(curSym)}</span>
-          <input id="amount" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0,00" value="${esc(ui.amount)}" aria-label="Monto"></div>
+          <input id="amount" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0,00" value="${esc(ui.amount)}" aria-label="amount"></div>
         </label>
-        <button class="primary" id="calc">Calcular</button>
+        <button class="primary" id="calc">${tt("calc_calculate")}</button>
       </section>
       <section id="result" aria-live="polite"></section>
       ${socialFooter()}
       ${chatFab()}`;
 
     $("#theme").onclick = cycleTheme;
+    $("#lang").onclick = cycleLang;
     bindFab();
     if ($("#myops-btn")) $("#myops-btn").onclick = () => window.RemesasOps.openMyOps();
     if (GitHub && !ui.isAdmin) {
@@ -916,7 +1118,7 @@ if (typeof module !== "undefined") module.exports = Core;
     if (!links.length) return "";
     const icons = STATE.business.socialIcons || {};
     const keyOf = (n) => (SOCIAL.find((x) => x[1] === n) || [])[0];
-    return `<footer class="social"><p class="social-title">Síguenos</p><div class="social-row">${links.map(([n, u]) => {
+    return `<footer class="social"><p class="social-title">${tt("footer_follow_us")}</p><div class="social-row">${links.map(([n, u]) => {
       const ic = icons[keyOf(n)];
       return ic && /^data:image\//.test(ic)
         ? `<a class="social-icon" href="${esc(u)}" target="_blank" rel="noopener" aria-label="${esc(n)}" title="${esc(n)}"><img src="${esc(ic)}" alt="${esc(n)}"></a>`
@@ -928,7 +1130,7 @@ if (typeof module !== "undefined") module.exports = Core;
     if (!u) return "";
     return `<a class="fab" id="fab" href="${esc(u)}" target="_blank" rel="noopener" aria-label="Conversa con nosotros por WhatsApp">
       <span class="fab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26"><path d="M12 3C6.9 3 3 6.6 3 11.1c0 2.5 1.2 4.7 3.2 6.2L5.5 21l3.9-2.1c.8.2 1.7.3 2.6.3 5.1 0 9-3.6 9-8.1S17.1 3 12 3z" fill="currentColor"/><circle cx="8.3" cy="11.2" r="1.3" fill="var(--wa)"/><circle cx="12" cy="11.2" r="1.3" fill="var(--wa)"/><circle cx="15.7" cy="11.2" r="1.3" fill="var(--wa)"/></svg></span>
-      <span class="fab-label">Conversa con nosotros</span></a>`;
+      <span class="fab-label">${tt("fab_chat")}</span></a>`;
   }
   let fabScroll = null;
   function bindFab() {
@@ -943,11 +1145,19 @@ if (typeof module !== "undefined") module.exports = Core;
   function saveRoute() { store.set("route", { from: ui.from, to: ui.to, mode: ui.mode }); }
 
   /** strict=true muestra errores de monto vacío; al escribir solo se muestran si hay texto. */
+  const ERROR_KEY = {
+    "Selecciona el país de origen y de destino.": "err_select_countries",
+    "El origen y el destino deben ser países distintos.": "err_same_country",
+    "Escribe un monto válido, por ejemplo 500 o 1.234,56.": "err_invalid_amount",
+    "El monto debe ser mayor que cero.": "err_amount_gt_zero",
+    "Esta ruta no está configurada.": "err_route_missing",
+    "Esta ruta está desactivada por el momento.": "err_route_disabled"
+  };
   function compute(strict) {
     ui.quote = null; ui.error = null;
     if (!ui.amount.trim() && !strict) { renderResult(); return; }
     try { ui.quote = C.quote(effState(), { from: ui.from, to: ui.to, mode: ui.mode, amount: ui.amount }); }
-    catch (e) { ui.error = e.message; }
+    catch (e) { ui.error = ERROR_KEY[e.message] ? tt(ERROR_KEY[e.message]) : e.message; }
     renderResult();
   }
 
@@ -956,36 +1166,39 @@ if (typeof module !== "undefined") module.exports = Core;
     if (!box) return;
     if (ui.error) { box.innerHTML = `<div class="alert" role="alert">${esc(ui.error)}</div>`; return; }
     const q = ui.quote;
-    if (!q) { box.innerHTML = `<div class="empty">Escribe un monto para ver la cotización.</div>`; return; }
+    if (!q) { box.innerHTML = `<div class="empty">${tt("calc_empty")}</div>`; return; }
     const M = (cur, v) => esc(C.formatMoney(STATE, cur, v));
     const big = q.mode === "send"
-      ? { label: "Recibe", value: M(q.toCurrency, q.shown.receive) }
-      : { label: q.hasFee ? "Total a pagar" : "Debe enviar", value: M(q.fromCurrency, q.hasFee ? q.shown.total : q.shown.send) };
+      ? { label: tt("result_receives"), value: M(q.toCurrency, q.shown.receive) }
+      : { label: q.hasFee ? tt("result_total_to_pay") : tt("result_must_send"), value: M(q.fromCurrency, q.hasFee ? q.shown.total : q.shown.send) };
     const rows = [];
-    rows.push(["Monto enviado", M(q.fromCurrency, q.shown.send)]);
+    rows.push([tt("result_amount_sent"), M(q.fromCurrency, q.shown.send)]);
     const bcvLabel = (ref) => live.bcv && STATE.rates.BCV_USD_VES.source !== "manual"
-      ? `BCV oficial${live.bcv.date ? " " + esc(shortDate(live.bcv.date)) : ""}` : (ref ? "BCV (referencia)" : "BCV");
+      ? tt("result_bcv_official", { date: live.bcv.date ? esc(shortDate(live.bcv.date)) : "" }) : (ref ? tt("result_bcv_reference") : tt("result_bcv"));
     q.ratesUsed.forEach((r) => rows.push(r.key === "BCV_USD_VES"
       ? [bcvLabel(r.reference), esc(C.formatRate(r.value))]
-      : [r.reference ? esc(r.label) + " (referencia)" : "Tasa utilizada", esc(r.text)]));
-    q.intermediates.forEach((i) => rows.push(["Equivale a", M(i.currency, i.value)]));
-    rows.push(["Monto recibido", M(q.toCurrency, q.shown.receive)]);
+      : [r.reference ? esc(r.label) + " (" + tt("word_reference") + ")" : tt("result_rate_used"), esc(r.text)]));
+    q.intermediates.forEach((i) => rows.push([tt("result_equals"), M(i.currency, i.value)]));
+    rows.push([tt("result_amount_received"), M(q.toCurrency, q.shown.receive)]);
     let feeRows = "";
     if (q.hasFee) {
-      feeRows = `<div class="fee"><dt>Comisión${q.appliedPercent !== undefined ? " (" + esc(C.formatRate(q.appliedPercent).replace(/,00$/, "")) + "%)" : ""}${q.feeIncluded ? " incluida" : ""}</dt><dd>${M(q.fromCurrency, q.shown.fee)}</dd></div>
-        <div class="total"><dt>Total a pagar</dt><dd>${M(q.fromCurrency, q.shown.total)}</dd></div>`;
+      feeRows = `<div class="fee"><dt>${tt("result_commission")}${q.appliedPercent !== undefined ? " (" + esc(C.formatRate(q.appliedPercent).replace(/,00$/, "")) + "%)" : ""}${q.feeIncluded ? " " + tt("result_included") : ""}</dt><dd>${M(q.fromCurrency, q.shown.fee)}</dd></div>
+        <div class="total"><dt>${tt("result_total_to_pay")}</dt><dd>${M(q.fromCurrency, q.shown.total)}</dd></div>`;
     }
-    const lowBanner = q.lowAmount ? `<div class="alert" style="margin-bottom:12px">Este monto es menor al mínimo recomendado${q.minRequired ? " (mínimo " + M(q.fromCurrency, q.minRequired) + ")" : ""}.${q.appliedPercent !== undefined && q.appliedPercent !== STATE.fees.percent ? " Si continúas, se aplica una comisión del " + esc(C.formatRate(q.appliedPercent).replace(/,00$/, "")) + "% en lugar del " + esc(C.formatRate(STATE.fees.percent).replace(/,00$/, "")) + "%." : ""}</div>` : "";
-    const text = C.whatsappText(effState(), q);
+    const lowBanner = q.lowAmount ? `<div class="alert" style="margin-bottom:12px">${esc(tt("result_low_amount", {
+      min: q.minRequired ? M(q.fromCurrency, q.minRequired) : "", newPct: q.appliedPercent !== undefined ? C.formatRate(q.appliedPercent).replace(/,00$/, "") : "",
+      oldPct: C.formatRate(STATE.fees.percent).replace(/,00$/, "")
+    }))}</div>` : "";
+    const text = C.whatsappText(effState(), q, ui.lang);
     box.innerHTML = `
       ${lowBanner}
       <article class="receipt" id="op-receipt-root">
-        <div class="head">${esc(q.from.flag + " " + q.from.name)} → ${esc(q.to.flag + " " + q.to.name)}</div>
+        <div class="head">${esc(q.from.flag + " " + C.countryNameFor(q.from.id, q.from.name, ui.lang))} → ${esc(q.to.flag + " " + C.countryNameFor(q.to.id, q.to.name, ui.lang))}</div>
         <div class="big"><span class="label">${big.label}</span><strong>${big.value}</strong></div>
         <div class="perf" aria-hidden="true"></div>
         <dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}${feeRows}</dl>
-        <a class="wa" href="${esc(C.whatsappUrl(text))}" target="_blank" rel="noopener">📲 Compartir por WhatsApp</a>
-        <div class="stamp">Tasa sujeta a cambios. Confirmar antes de operar.</div>
+        <a class="wa" href="${esc(C.whatsappUrl(text))}" target="_blank" rel="noopener">${tt("result_share_whatsapp")}</a>
+        <div class="stamp">${tt("result_footer")}</div>
       </article>`;
     if (window.RemesasOps) window.RemesasOps.onQuoteRendered(q);
   }
@@ -1428,7 +1641,7 @@ if (typeof module !== "undefined") module.exports = Core;
     };
   }
 
-  window.RemesasCalc = { renderCalc };
+  window.RemesasCalc = { renderCalc, getLang: () => ui.lang };
 
   /* ---------- Arranque ---------- */
   renderCalc();
@@ -1486,6 +1699,7 @@ if (typeof module !== "undefined") module.exports = Core;
   if (!window.firebase || !CONFIG.firebase) return; // sin Firebase configurado: la calculadora sigue igual
 
   const fb = firebase;
+  const C = Core; // mismo módulo compartido que usa main.js (tasas, formato, y ahora traducciones)
   fb.initializeApp(CONFIG.firebase);
   const auth = fb.auth();
   const db = fb.firestore();
@@ -1497,6 +1711,9 @@ if (typeof module !== "undefined") module.exports = Core;
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+  /** Idioma elegido en la calculadora (ES/PT/EN). El panel de administración se queda en español. */
+  const lang = () => (window.RemesasCalc && window.RemesasCalc.getLang ? window.RemesasCalc.getLang() : "es");
+  const tt = (key, vars) => C.t(key, lang(), vars);
   const nowISO = () => new Date().toISOString();
   const opNum = (n) => "#" + String(n).padStart(6, "0");
   /** Traduce errores de Firebase a un mensaje que ayude a diagnosticar, sin tecnicismos. */
@@ -1848,11 +2065,15 @@ if (typeof module !== "undefined") module.exports = Core;
     const fn = screens[OP.view];
     if (fn) fn(app); else exitToCalc();
   }
-  function header(title, sub) {
+  function header(title, sub, back) {
     return `<header class="top"><div class="brand"><div class="mark" aria-hidden="true">💱</div>
       <div><h1>${esc(title)}</h1>${sub ? `<p class="muted">${esc(sub)}</p>` : ""}</div></div>
-      <div class="top-actions"><button class="icon-btn" id="op-back">Volver</button></div></header>`;
+      <div class="top-actions"><button class="icon-btn" id="op-back">${esc(back || "Volver")}</button></div></header>`;
   }
+  function countryNameT(c) { return C.countryNameFor(c.id, c.name, lang()); }
+  function fieldLabelT(k) { const key = "field_" + k; const v = tt(key); return v === key ? (FIELD_LABEL[k] || k) : v; }
+  function methodLabelT(m) { const key = "method_" + m; const v = tt(key); return v === key ? (METHOD_LABEL[m] || m) : v; }
+  function statusLabelT(status) { const key = "status_" + String(status).toLowerCase(); const v = tt(key); return v === key ? ((STATUS[status] || {}).label || status) : v; }
   function wireBack(root, fn) { const b = $("#op-back", root); if (b) b.onclick = fn; }
 
   function mountContinueButton(quote) {
@@ -1861,46 +2082,47 @@ if (typeof module !== "undefined") module.exports = Core;
     if (!COUNTRY_METHODS[quote.from.id] || !COUNTRY_METHODS[quote.to.id]) return;
     const btn = document.createElement("button");
     btn.className = "primary"; btn.style.margin = "0 18px 18px"; btn.style.width = "calc(100% - 36px)";
-    btn.textContent = "Continuar con la remesa";
+    btn.textContent = tt("ops_continue");
     btn.onclick = () => { OP.draftQuote = quote; go("customer"); };
     receipt.appendChild(btn);
   }
 
   function screenCustomer(app) {
     const q = OP.draftQuote;
-    app.innerHTML = header("Tus datos", "Paso 1 de 5") + `
+    app.innerHTML = header(tt("ops_c_title"), tt("ops_step", { n: 1 }), tt("ops_back")) + `
       <div class="card stack">
-        <p class="hint" style="margin:0">Esto es para identificar tu operación. No pedimos contraseñas ni códigos de ningún tipo.</p>
-        <label class="field"><span>Nombre completo</span><input class="input" id="c-name" autocomplete="name"></label>
-        <label class="field"><span>Teléfono / WhatsApp</span><input class="input" id="c-phone" type="tel" inputmode="tel" placeholder="+55..."></label>
-        <label class="field"><span>Email (opcional)</span><input class="input" id="c-email" type="email"></label>
+        <p class="hint" style="margin:0">${esc(tt("ops_c_intro"))}</p>
+        <label class="field"><span>${esc(tt("ops_c_name"))}</span><input class="input" id="c-name" autocomplete="name"></label>
+        <label class="field"><span>${esc(tt("ops_c_phone"))}</span><input class="input" id="c-phone" type="tel" inputmode="tel" placeholder="+55..."></label>
+        <label class="field"><span>${esc(tt("ops_c_email"))}</span><input class="input" id="c-email" type="email"></label>
         <div class="err" id="c-err"></div>
-        <button class="primary" id="c-next" style="margin-top:0">Continuar</button>
+        <button class="primary" id="c-next" style="margin-top:0">${esc(tt("ops_continue_btn"))}</button>
       </div>`;
     wireBack(app, exitToCalc);
     $("#c-next").onclick = async () => {
       const name = $("#c-name").value.trim(), phone = $("#c-phone").value.trim(), email = $("#c-email").value.trim();
-      if (!Valid.notEmpty(name)) return ($("#c-err").textContent = "Escribe tu nombre completo.");
-      if (!Valid.phone(phone)) return ($("#c-err").textContent = "Escribe un teléfono válido, con código de país.");
-      if (email && !Valid.email(email)) return ($("#c-err").textContent = "El email no parece válido.");
-      $("#c-next").disabled = true; $("#c-next").textContent = "Creando operación…";
+      if (!Valid.notEmpty(name)) return ($("#c-err").textContent = tt("ops_err_name"));
+      if (!Valid.phone(phone)) return ($("#c-err").textContent = tt("ops_err_phone"));
+      if (email && !Valid.email(email)) return ($("#c-err").textContent = tt("ops_err_email"));
+      $("#c-next").disabled = true; $("#c-next").textContent = tt("ops_creating");
       try {
         await ensureAuth();
         await createOperation(q, { name, phone, email });
         await loadAccounts();
         go("payment");
-      } catch (e) { console.error("crear operación:", e); $("#c-err").textContent = friendlyError(e); $("#c-next").disabled = false; $("#c-next").textContent = "Continuar"; }
+      } catch (e) { console.error("crear operación:", e); $("#c-err").textContent = friendlyError(e); $("#c-next").disabled = false; $("#c-next").textContent = tt("ops_continue_btn"); }
     };
   }
 
-  function accountSummary(a) {
-    const rows = { pix: [["Titular", a.holderName], [a.docType, a.docNumber], ["Tipo de clave", a.pixKeyType], ["Clave Pix", a.pixKey], ["Banco", a.bank]],
-      pago_movil: [["Banco", a.bank], ["Titular", a.holderName], ["Documento", (a.docType || "") + "-" + (a.docNumber || "")], ["Teléfono", a.phone]],
-      transferencia: [["Banco", a.bank], ["Titular", a.holderName], ["Documento", (a.docType || "") + "-" + (a.docNumber || "")], ["Cuenta", a.accountNumber || a.cbu], a.alias ? ["Alias", a.alias] : null, ["Tipo", a.accountType]].filter(Boolean),
-      psp: [["Titular", a.holderName], ["CUIT/CUIL", a.docNumber], ["CVU", a.cvu], ["Alias CVU", a.aliasCvu], ["PSP", a.pspName]],
-      zelle: [["Titular", a.holderName], [a.contactType, a.contactValue]],
-      usdt_wallet: [a.platformLabel ? ["Plataforma", a.platformLabel] : null, ["Red", a.network], ["Wallet", a.walletAddress]].filter(Boolean),
-      usdt_id: [["Plataforma", a.platform], ["ID", a.userId]]
+  function accountSummary(a, T) {
+    const fl = T ? fieldLabelT : fieldLabel;
+    const rows = { pix: [[fl("holderName"), a.holderName], [a.docType, a.docNumber], [fl("pixKeyType"), a.pixKeyType], [fl("pixKey"), a.pixKey], [fl("bank"), a.bank]],
+      pago_movil: [[fl("bank"), a.bank], [fl("holderName"), a.holderName], [fl("docNumber"), (a.docType || "") + "-" + (a.docNumber || "")], [fl("phone"), a.phone]],
+      transferencia: [[fl("bank"), a.bank], [fl("holderName"), a.holderName], [fl("docNumber"), (a.docType || "") + "-" + (a.docNumber || "")], [fl("accountNumber"), a.accountNumber || a.cbu], a.alias ? [fl("alias"), a.alias] : null, [fl("accountType"), a.accountType]].filter(Boolean),
+      psp: [[fl("holderName"), a.holderName], ["CUIT/CUIL", a.docNumber], [fl("cvu"), a.cvu], [fl("aliasCvu"), a.aliasCvu], [fl("pspName"), a.pspName]],
+      zelle: [[fl("holderName"), a.holderName], [a.contactType, a.contactValue]],
+      usdt_wallet: [a.platformLabel ? [fl("platform"), a.platformLabel] : null, [fl("network"), a.network], [fl("walletAddress"), a.walletAddress]].filter(Boolean),
+      usdt_id: [[fl("platform"), a.platform], [fl("userId"), a.userId]]
     };
     return rows[a.method] || [];
   }
@@ -1910,24 +2132,25 @@ if (typeof module !== "undefined") module.exports = Core;
     const list = OP.accounts.filter((a) => a.country === q.from.id && methods.includes(a.method));
     let sel = OP.chosenAccount && list.find((a) => a.id === OP.chosenAccount.id) ? OP.chosenAccount : list[0];
     OP.chosenAccount = sel;
-    app.innerHTML = header("Realiza tu pago", `Paso 2 de 5 · en ${q.from.name}`) +
-      (!list.length ? `<div class="alert">Por ahora no hay una cuenta activa para recibir pagos desde ${esc(q.from.name)}. Escríbenos por WhatsApp para coordinar.</div>` : `
+    const countryLabel = countryNameT(q.from);
+    app.innerHTML = header(tt("ops_p_title"), tt("ops_p_step", { country: countryLabel }), tt("ops_back")) +
+      (!list.length ? `<div class="alert">${esc(tt("ops_p_no_accounts", { country: countryLabel }))}</div>` : `
       <div class="card stack">
-        ${list.length > 1 ? `<label class="field"><span>Método</span><select id="p-account">${list.map((a) => `<option value="${a.id}" ${a === sel ? "selected" : ""}>${esc(METHOD_LABEL[a.method])}${a.label ? " — " + esc(a.label) : ""}</option>`).join("")}</select></label>` : `<h3 style="margin:0">${esc(METHOD_LABEL[sel.method])}</h3>`}
+        ${list.length > 1 ? `<label class="field"><span>${esc(tt("ops_method_label"))}</span><select id="p-account">${list.map((a) => `<option value="${a.id}" ${a === sel ? "selected" : ""}>${esc(methodLabelT(a.method))}${a.label ? " — " + esc(a.label) : ""}</option>`).join("")}</select></label>` : `<h3 style="margin:0">${esc(methodLabelT(sel.method))}</h3>`}
         <div id="p-fields"></div>
-        ${sel.qr ? `<img src="${esc(sel.qr)}" alt="Código QR" style="width:180px;height:180px;object-fit:contain;margin:0 auto;display:block;border-radius:12px;background:#fff;padding:8px">` : ""}
-        <div class="grid2"><button class="ghost" id="p-copykey">Copiar clave</button><button class="ghost" id="p-copyall">Copiar datos</button></div>
-        <div class="hint" style="margin:0">Realiza el pago por tu cuenta y luego toca Continuar para subir el comprobante.</div>
-        <button class="primary" id="p-next" style="margin-top:0">Ya pagué, continuar</button>
+        ${sel.qr ? `<img src="${esc(sel.qr)}" alt="QR" style="width:180px;height:180px;object-fit:contain;margin:0 auto;display:block;border-radius:12px;background:#fff;padding:8px">` : ""}
+        <div class="grid2"><button class="ghost" id="p-copykey">${esc(tt("ops_p_copy_key"))}</button><button class="ghost" id="p-copyall">${esc(tt("ops_p_copy_all"))}</button></div>
+        <div class="hint" style="margin:0">${esc(tt("ops_p_hint"))}</div>
+        <button class="primary" id="p-next" style="margin-top:0">${esc(tt("ops_p_next"))}</button>
       </div>`);
     wireBack(app, () => go("customer"));
     if (!list.length) return;
-    const renderFields = () => { $("#p-fields").innerHTML = accountSummary(sel).map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><strong>${esc(v || "—")}</strong></div>`).join(""); };
+    const renderFields = () => { $("#p-fields").innerHTML = accountSummary(sel, true).map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><strong>${esc(v || "—")}</strong></div>`).join(""); };
     renderFields();
     if ($("#p-account")) $("#p-account").onchange = (e) => { sel = list.find((a) => a.id === e.target.value); OP.chosenAccount = sel; screenPayment(app); };
     const mainKey = (a) => a.pixKey || a.cbu || a.alias || a.aliasCvu || a.phone || a.accountNumber || "";
-    $("#p-copykey").onclick = () => { navigator.clipboard.writeText(mainKey(sel)).then(() => toast("Clave copiada")).catch(() => toast("No se pudo copiar")); };
-    $("#p-copyall").onclick = () => { const txt = accountSummary(sel).map(([k, v]) => `${k}: ${v}`).join("\n"); navigator.clipboard.writeText(txt).then(() => toast("Datos copiados")).catch(() => toast("No se pudo copiar")); };
+    $("#p-copykey").onclick = () => { navigator.clipboard.writeText(mainKey(sel)).then(() => toast(tt("ops_p_copied_key"))).catch(() => toast(tt("ops_p_copy_error"))); };
+    $("#p-copyall").onclick = () => { const txt = accountSummary(sel, true).map(([k, v]) => `${k}: ${v}`).join("\n"); navigator.clipboard.writeText(txt).then(() => toast(tt("ops_p_copied_all"))).catch(() => toast(tt("ops_p_copy_error"))); };
     $("#p-next").onclick = async () => {
       $("#p-next").disabled = true;
       try { await patchOperation({ payAccountId: sel.id, payMethod: sel.method }, "Cliente inició el pago por " + METHOD_LABEL[sel.method] + "."); go("receipt"); }
@@ -1937,41 +2160,41 @@ if (typeof module !== "undefined") module.exports = Core;
 
   function screenReceipt(app) {
     const q = OP.draftQuote;
-    app.innerHTML = header("Sube tu comprobante", "Paso 3 de 5") + `
+    app.innerHTML = header(tt("ops_r_title"), tt("ops_step", { n: 3 }), tt("ops_back")) + `
       <div class="card stack">
-        <p class="hint" style="margin:0">¿Ya realizaste el pago? Sube una foto o el PDF del comprobante.</p>
-        <label class="ghost file-btn" style="min-height:70px">${OP.receiptFile ? "Cambiar foto" : "Tomar foto o elegir de la galería"}<input type="file" accept="image/*" capture="environment" class="sr" id="r-file"></label>
-        <div class="hint" style="margin:0">Por ahora solo se aceptan fotos (no PDF). Una captura de pantalla también funciona.</div>
+        <p class="hint" style="margin:0">${esc(tt("ops_r_intro"))}</p>
+        <label class="ghost file-btn" style="min-height:70px">${OP.receiptFile ? esc(tt("ops_r_change")) : esc(tt("ops_r_pick"))}<input type="file" accept="image/*" capture="environment" class="sr" id="r-file"></label>
+        <div class="hint" style="margin:0">${esc(tt("ops_r_photo_only"))}</div>
         <div id="r-preview"></div>
-        <label class="field"><span>Monto pagado</span><input class="input" id="r-amount" inputmode="decimal" value="${esc(q.shown.total.toString())}"></label>
-        <label class="field"><span>Referencia (opcional)</span><input class="input" id="r-ref" placeholder="Número de operación, últimos dígitos..."></label>
-        <label class="field"><span>Observación (opcional)</span><input class="input" id="r-note"></label>
+        <label class="field"><span>${esc(tt("ops_r_amount"))}</span><input class="input" id="r-amount" inputmode="decimal" value="${esc(q.shown.total.toString())}"></label>
+        <label class="field"><span>${esc(tt("ops_r_reference"))}</span><input class="input" id="r-ref" placeholder="${esc(tt("ops_r_reference_ph"))}"></label>
+        <label class="field"><span>${esc(tt("ops_r_note"))}</span><input class="input" id="r-note"></label>
         <div class="err" id="r-err"></div>
-        <button class="primary" id="r-next" style="margin-top:0">Continuar</button>
+        <button class="primary" id="r-next" style="margin-top:0">${esc(tt("ops_r_next"))}</button>
       </div>`;
     wireBack(app, () => go("payment"));
     if (OP.receiptPreview) $("#r-preview").innerHTML = `<img src="${OP.receiptPreview}" style="max-width:100%;border-radius:12px;margin-top:8px">`;
     $("#r-file").onchange = (e) => {
       const f = e.target.files && e.target.files[0]; if (!f) return;
-      if (!/^image\//.test(f.type)) return ($("#r-err").textContent = "Por ahora solo se aceptan fotos (no PDF).");
-      if (f.size > 15 * 1024 * 1024) return ($("#r-err").textContent = "La foto es muy pesada (máx. 15 MB).");
+      if (!/^image\//.test(f.type)) return ($("#r-err").textContent = tt("ops_r_err_type"));
+      if (f.size > 15 * 1024 * 1024) return ($("#r-err").textContent = tt("ops_r_err_size"));
       OP.receiptFile = f; $("#r-err").textContent = "";
       const reader = new FileReader(); reader.onload = () => { OP.receiptPreview = reader.result; $("#r-preview").innerHTML = `<img src="${reader.result}" style="max-width:100%;border-radius:12px;margin-top:8px">`; }; reader.readAsDataURL(f);
     };
     $("#r-next").onclick = async () => {
-      if (!OP.receiptFile) return ($("#r-err").textContent = "Sube el comprobante para continuar.");
-      $("#r-next").disabled = true; $("#r-next").textContent = "Guardando…";
+      if (!OP.receiptFile) return ($("#r-err").textContent = tt("ops_r_err_required"));
+      $("#r-next").disabled = true; $("#r-next").textContent = tt("ops_r_uploading");
       try {
         const url = await compressImage(OP.receiptFile, 350000);
         await patchOperation({ receipt: { url, amount: $("#r-amount").value.trim(), date: nowISO(), reference: $("#r-ref").value.trim(), note: $("#r-note").value.trim() }, status: "RECEIPT_UPLOADED" }, "Comprobante recibido.");
         OP.myBeneficiaries = await loadMyBeneficiaries(q.to.id);
         go("beneficiary");
-      } catch (e) { console.error("subir comprobante:", e); $("#r-err").textContent = e && e.code ? friendlyError(e) : (e.message || "No se pudo guardar el comprobante."); $("#r-next").disabled = false; $("#r-next").textContent = "Continuar"; }
+      } catch (e) { console.error("subir comprobante:", e); $("#r-err").textContent = e && e.code ? friendlyError(e) : (e.message || tt("ops_generic_error")); $("#r-next").disabled = false; $("#r-next").textContent = tt("ops_r_next"); }
     };
   }
 
-  function fieldInput(f, val) {
-    const key = f[0], label = f[1], type = f[2];
+  function fieldInput(f, val, T) {
+    const key = f[0], label = T ? fieldLabelT(key) : f[1], type = f[2];
     if (type.indexOf("select:") === 0) {
       const opts = type.slice(7).split(",");
       return `<label class="field"><span>${esc(label)}</span><select data-f="${key}">${opts.map((o) => `<option ${o === val ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></label>`;
@@ -1985,14 +2208,14 @@ if (typeof module !== "undefined") module.exports = Core;
     TX_COUNTRY = country === "AR" ? "AR" : "VE";
     const fields = beneficiaryFields(country, OP.chosenBenMethod);
     const saved = OP.myBeneficiaries.filter((b) => b.method === OP.chosenBenMethod);
-    app.innerHTML = header("¿Dónde quieres recibir?", `Paso 4 de 5 · en ${q.to.name}`) + `
+    app.innerHTML = header(tt("ops_b_title"), tt("ops_b_step", { country: countryNameT(q.to) }), tt("ops_back")) + `
       <div class="card stack">
-        ${methods.length > 1 ? `<div class="chips">${methods.map((m) => `<button class="chip" data-m="${m}" aria-pressed="${m === OP.chosenBenMethod}">${esc(METHOD_LABEL[m])}</button>`).join("")}</div>` : `<h3 style="margin:0">${esc(METHOD_LABEL[OP.chosenBenMethod])}</h3>`}
-        ${saved.length ? `<label class="field"><span>Usar un beneficiario guardado</span><select id="b-saved"><option value="">— Nuevo beneficiario —</option>${saved.map((b) => `<option value="${b.id}">${esc(b.label)}</option>`).join("")}</select></label>` : ""}
-        <div id="b-fields" class="stack">${fields.map((f) => fieldInput(f, OP.benForm[f[0]])).join("")}</div>
-        <label class="switch"><span class="hint" style="margin:0">Guardar estos datos para futuras operaciones</span><input type="checkbox" id="b-save" ${OP.saveBen ? "checked" : ""}></label>
+        ${methods.length > 1 ? `<div class="chips">${methods.map((m) => `<button class="chip" data-m="${m}" aria-pressed="${m === OP.chosenBenMethod}">${esc(methodLabelT(m))}</button>`).join("")}</div>` : `<h3 style="margin:0">${esc(methodLabelT(OP.chosenBenMethod))}</h3>`}
+        ${saved.length ? `<label class="field"><span>${esc(tt("ops_b_saved"))}</span><select id="b-saved"><option value="">${esc(tt("ops_b_new"))}</option>${saved.map((b) => `<option value="${b.id}">${esc(b.label)}</option>`).join("")}</select></label>` : ""}
+        <div id="b-fields" class="stack">${fields.map((f) => fieldInput(f, OP.benForm[f[0]], true)).join("")}</div>
+        <label class="switch"><span class="hint" style="margin:0">${esc(tt("ops_b_save"))}</span><input type="checkbox" id="b-save" ${OP.saveBen ? "checked" : ""}></label>
         <div class="err" id="b-err"></div>
-        <button class="primary" id="b-next" style="margin-top:0">Continuar</button>
+        <button class="primary" id="b-next" style="margin-top:0">${esc(tt("ops_b_next"))}</button>
       </div>`;
     wireBack(app, () => go("receipt"));
     $$(".chip", app).forEach((c) => (c.onclick = () => { OP.chosenBenMethod = c.dataset.m; OP.benForm = {}; screenBeneficiary(app); }));
@@ -2006,7 +2229,7 @@ if (typeof module !== "undefined") module.exports = Core;
     $("#b-next").onclick = async () => {
       const data = {};
       fields.forEach((f) => { const k = f[0]; const el = $(`[data-f="${k}"]`, app); data[k] = el ? el.value : (OP.benForm[k] || ""); });
-      for (const f of fields) { const k = f[0], label = f[1], validate = f[3]; if (!validate(data[k], data)) return ($("#b-err").textContent = `Revisa el campo "${label}".`); }
+      for (const f of fields) { const k = f[0], validate = f[3]; if (!validate(data[k], data)) return ($("#b-err").textContent = tt("ops_field_check", { field: fieldLabelT(k) })); }
       OP.benForm = data;
       $("#b-next").disabled = true;
       try {
@@ -2019,19 +2242,19 @@ if (typeof module !== "undefined") module.exports = Core;
 
   function screenReview(app) {
     const q = OP.draftQuote, op = OP.op, ben = op.beneficiary;
-    app.innerHTML = header("Revisa tus datos", "Paso 5 de 5") + `
+    app.innerHTML = header(tt("ops_v_title"), tt("ops_step", { n: 5 }), tt("ops_back")) + `
       <div class="card stack">
-        <h3 style="margin:0">🔎 Operación</h3>
-        <div class="kv"><span>Ruta</span><strong>${esc(q.from.flag + " " + q.from.name)} → ${esc(q.to.flag + " " + q.to.name)}</strong></div>
-        <div class="kv"><span>Envías</span><strong>${esc(op.amounts.total)} ${esc(op.route.fromCurrency)}</strong></div>
-        <div class="kv"><span>Recibe</span><strong>${esc(op.amounts.receive)} ${esc(op.route.toCurrency)}</strong></div>
+        <h3 style="margin:0">${esc(tt("ops_v_operation"))}</h3>
+        <div class="kv"><span>${esc(tt("ops_v_route"))}</span><strong>${esc(q.from.flag + " " + countryNameT(q.from))} → ${esc(q.to.flag + " " + countryNameT(q.to))}</strong></div>
+        <div class="kv"><span>${esc(tt("ops_v_sends"))}</span><strong>${esc(op.amounts.total)} ${esc(op.route.fromCurrency)}</strong></div>
+        <div class="kv"><span>${esc(tt("ops_v_receives"))}</span><strong>${esc(op.amounts.receive)} ${esc(op.route.toCurrency)}</strong></div>
       </div>
       <div class="card stack">
-        <h3 style="margin:0">Beneficiario</h3>
-        ${Object.entries(ben.fields).filter((e) => e[1]).map((e) => `<div class="kv"><span>${esc(fieldLabel(e[0]))}</span><strong>${esc(e[1])}</strong></div>`).join("")}
+        <h3 style="margin:0">${esc(tt("ops_v_beneficiary"))}</h3>
+        ${Object.entries(ben.fields).filter((e) => e[1]).map((e) => `<div class="kv"><span>${esc(fieldLabelT(e[0]))}</span><strong>${esc(e[1])}</strong></div>`).join("")}
       </div>
       <div class="err" id="v-err"></div>
-      <div class="grid2"><button class="ghost" id="v-edit">Editar</button><button class="primary" id="v-confirm">Confirmar operación</button></div>`;
+      <div class="grid2"><button class="ghost" id="v-edit">${esc(tt("ops_v_edit"))}</button><button class="primary" id="v-confirm">${esc(tt("ops_v_confirm"))}</button></div>`;
     wireBack(app, () => go("beneficiary"));
     $("#v-edit").onclick = () => go("beneficiary");
     $("#v-confirm").onclick = async () => {
@@ -2044,52 +2267,52 @@ if (typeof module !== "undefined") module.exports = Core;
 function screenDone(app) {
     const op = OP.op;
     app.innerHTML = `<header class="top"><div class="brand"><div class="mark" aria-hidden="true">✅</div>
-        <div><h1>¡Listo!</h1><p class="muted">Tu operación fue creada</p></div></div></header>
+        <div><h1>${esc(tt("ops_d_title"))}</h1><p class="muted">${esc(tt("ops_d_subtitle"))}</p></div></div></header>
       <div class="card" style="text-align:center">
-        <p class="hint" style="margin:0">Número de operación</p>
+        <p class="hint" style="margin:0">${esc(tt("ops_d_number"))}</p>
         <strong style="display:block;font-family:var(--display);font-size:2.2rem;margin:6px 0">${opNum(op.number)}</strong>
-        <p class="hint">Vamos a revisar tu pago y te avisaremos por WhatsApp cuando esté listo.</p>
-        <a class="wa" href="${esc(OFFICIAL_WA + "?text=" + encodeURIComponent(adminSummaryText(op)))}" target="_blank" rel="noopener">📲 Compartir operación por WhatsApp</a>
-        <button class="ghost" id="d-mine" style="margin-top:14px;width:100%">Ver mis operaciones</button>
-        <button class="link-btn" id="d-calc">Volver a la calculadora</button>
+        <p class="hint">${esc(tt("ops_d_message"))}</p>
+        <a class="wa" href="${esc(OFFICIAL_WA + "?text=" + encodeURIComponent(adminSummaryText(op)))}" target="_blank" rel="noopener">${esc(tt("ops_d_share"))}</a>
+        <button class="ghost" id="d-mine" style="margin-top:14px;width:100%">${esc(tt("ops_d_myops"))}</button>
+        <button class="link-btn" id="d-calc">${esc(tt("ops_d_calc"))}</button>
       </div>`;
     $("#d-mine").onclick = () => go("myops");
     $("#d-calc").onclick = exitToCalc;
   }
 
-  function statusBadge(status) { const s = STATUS[status] || { label: status, dot: "⚪" }; return `<span class="badge">${s.dot} ${esc(s.label)}</span>`; }
+  function statusBadge(status, T) { const s = STATUS[status] || { label: status, dot: "⚪" }; return `<span class="badge">${s.dot} ${esc(T ? statusLabelT(status) : s.label)}</span>`; }
   function screenMyOps(app) {
-    app.innerHTML = header("Mis operaciones") + `<div id="mo-list" class="stack"><div class="hint">Cargando…</div></div>`;
+    app.innerHTML = header(tt("ops_mo_title"), null, tt("ops_back")) + `<div id="mo-list" class="stack"><div class="hint">${esc(tt("ops_mo_loading"))}</div></div>`;
     wireBack(app, exitToCalc);
     loadMyOperations().then((ops) => {
       $("#mo-list").innerHTML = ops.length ? ops.map((o) => `
         <button class="card op-row" data-id="${o.id}" style="text-align:left;width:100%;border:1px solid var(--line);cursor:pointer">
-          <div style="display:flex;justify-content:space-between;gap:8px"><strong>${opNum(o.number)}</strong>${statusBadge(o.status)}</div>
+          <div style="display:flex;justify-content:space-between;gap:8px"><strong>${opNum(o.number)}</strong>${statusBadge(o.status, true)}</div>
           <div class="hint" style="margin:4px 0 0">${esc(o.route.fromLabel)} → ${esc(o.route.toLabel)}</div>
           <div style="margin-top:4px">${esc(o.amounts.total)} ${esc(o.route.fromCurrency)} → ${esc(o.amounts.receive)} ${esc(o.route.toCurrency)}</div>
-        </button>`).join("") : `<div class="empty">Todavía no tienes operaciones.</div>`;
+        </button>`).join("") : `<div class="empty">${esc(tt("ops_mo_empty"))}</div>`;
       $$(".op-row", app).forEach((b) => (b.onclick = () => { OP.admin.opDetail = b.dataset.id; go("myopDetail"); }));
     }).catch((e) => { console.error("mis operaciones:", e); $("#mo-list").innerHTML = `<div class="alert">${esc(friendlyError(e))}</div>`; });
   }
-  function historyList(hist) {
-    return `<div class="timeline">${(hist || []).slice().reverse().map((h) => `<div class="tl-item"><span class="tl-dot"></span><div><strong>${esc((STATUS[h.status] || {}).label || h.status)}</strong><div class="hint" style="margin:2px 0 0">${esc(h.note || "")}</div><div class="hint" style="margin:0">${esc(new Date(h.at).toLocaleString("es"))}</div></div></div>`).join("")}</div>`;
+  function historyList(hist, T) {
+    return `<div class="timeline">${(hist || []).slice().reverse().map((h) => `<div class="tl-item"><span class="tl-dot"></span><div><strong>${esc(T ? statusLabelT(h.status) : ((STATUS[h.status] || {}).label || h.status))}</strong><div class="hint" style="margin:2px 0 0">${esc(h.note || "")}</div><div class="hint" style="margin:0">${esc(new Date(h.at).toLocaleString(T ? lang() : "es"))}</div></div></div>`).join("")}</div>`;
   }
   function screenMyOpDetail(app) {
-    app.innerHTML = header("Operación", "") + `<div class="stack" id="mod-body"><div class="hint">Cargando…</div></div>`;
+    app.innerHTML = header(tt("ops_mod_title"), "", tt("ops_back")) + `<div class="stack" id="mod-body"><div class="hint">${esc(tt("ops_mo_loading"))}</div></div>`;
     wireBack(app, () => go("myops"));
     loadOperation(OP.admin.opDetail).then((o) => {
-      if (!o) { $("#mod-body").innerHTML = "<div class=\"empty\">No se encontró la operación.</div>"; return; }
+      if (!o) { $("#mod-body").innerHTML = `<div class="empty">${esc(tt("ops_mod_not_found"))}</div>`; return; }
       $("#mod-body").innerHTML = `
         <div class="card stack">
-          <div style="display:flex;justify-content:space-between"><strong>${opNum(o.number)}</strong>${statusBadge(o.status)}</div>
-          <div class="kv"><span>Ruta</span><strong>${esc(o.route.fromLabel)} → ${esc(o.route.toLabel)}</strong></div>
-          <div class="kv"><span>Envías</span><strong>${esc(o.amounts.total)} ${esc(o.route.fromCurrency)}</strong></div>
-          <div class="kv"><span>Recibe</span><strong>${esc(o.amounts.receive)} ${esc(o.route.toCurrency)}</strong></div>
-          ${o.receipt ? `<button class="ghost" style="width:100%" id="mod-view-receipt">Ver comprobante</button>` : ""}
-          ${TERMINAL.indexOf(o.status) !== -1 && o.transferReceipt ? `<button class="ghost" style="width:100%" id="mod-view-transfer">Ver comprobante de envío</button>` : ""}
-          <a class="wa" href="${esc(OFFICIAL_WA + "?text=" + encodeURIComponent(adminSummaryText(o)))}" target="_blank" rel="noopener">📲 Compartir por WhatsApp</a>
+          <div style="display:flex;justify-content:space-between"><strong>${opNum(o.number)}</strong>${statusBadge(o.status, true)}</div>
+          <div class="kv"><span>${esc(tt("ops_v_route"))}</span><strong>${esc(o.route.fromLabel)} → ${esc(o.route.toLabel)}</strong></div>
+          <div class="kv"><span>${esc(tt("ops_v_sends"))}</span><strong>${esc(o.amounts.total)} ${esc(o.route.fromCurrency)}</strong></div>
+          <div class="kv"><span>${esc(tt("ops_v_receives"))}</span><strong>${esc(o.amounts.receive)} ${esc(o.route.toCurrency)}</strong></div>
+          ${o.receipt ? `<button class="ghost" style="width:100%" id="mod-view-receipt">${esc(tt("ops_mod_view_receipt"))}</button>` : ""}
+          ${TERMINAL.indexOf(o.status) !== -1 && o.transferReceipt ? `<button class="ghost" style="width:100%" id="mod-view-transfer">${esc(tt("ops_mod_view_transfer"))}</button>` : ""}
+          <a class="wa" href="${esc(OFFICIAL_WA + "?text=" + encodeURIComponent(adminSummaryText(o)))}" target="_blank" rel="noopener">${esc(tt("ops_mod_share"))}</a>
         </div>
-        <div class="card"><h3 style="margin-top:0">Historial</h3>${historyList(o.history)}</div>`;
+        <div class="card"><h3 style="margin-top:0">${esc(tt("ops_mod_history"))}</h3>${historyList(o.history, true)}</div>`;
       if ($("#mod-view-receipt")) $("#mod-view-receipt").onclick = () => openImagePreview(o.receipt.url);
       if ($("#mod-view-transfer")) $("#mod-view-transfer").onclick = () => openImagePreview(o.transferReceipt.url);
     }).catch((e) => { console.error("detalle operación:", e); $("#mod-body").innerHTML = `<div class="alert">${esc(friendlyError(e))}</div>`; });
