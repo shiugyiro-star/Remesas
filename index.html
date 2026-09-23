@@ -586,6 +586,10 @@ const Core = (function () {
     hist_pay_started: { es: "Cliente inició el pago por {method}.", pt: "Cliente iniciou o pagamento por {method}.", en: "Customer started paying via {method}." },
     hist_split: { es: "Pago repartido entre {n} beneficiarios.", pt: "Pagamento dividido entre {n} beneficiários.", en: "Payment split among {n} beneficiaries." },
     hist_voided: { es: "Anulada por el administrador (carga manual incorrecta).", pt: "Anulada pelo administrador (carregamento manual incorreto).", en: "Voided by the admin (incorrect manual entry)." },
+    hist_ben_edited: { es: "Administrador editó los datos del beneficiario {n}.", pt: "O administrador editou os dados do beneficiário {n}.", en: "The admin edited beneficiary {n}'s details." },
+    ops_resume_hint: { es: "Tienes una operación sin terminar:", pt: "Você tem uma operação sem terminar:", en: "You have an unfinished transaction:" },
+    ops_resume_continue: { es: "Continuar", pt: "Continuar", en: "Continue" },
+    ops_resume_discard: { es: "Descartar", pt: "Descartar", en: "Discard" },
 
     status_pending_payment: { es: "Pendiente de pago", pt: "Pendente de pagamento", en: "Pending payment" },
     status_receipt_uploaded: { es: "Comprobante recibido", pt: "Comprovante recebido", en: "Receipt received" },
@@ -1133,6 +1137,7 @@ if (typeof module !== "undefined") module.exports = Core;
     inp.onkeydown = (e) => { if (e.key === "Enter") { compute(true); inp.blur(); } };
     $("#calc").onclick = () => compute(true);
     compute(false);
+    if (window.RemesasOps && window.RemesasOps.onCalcRendered) window.RemesasOps.onCalcRendered();
   }
   /* ---------- Redes sociales y botón flotante de WhatsApp ---------- */
   const SOCIAL = [["instagram", "Instagram"], ["tiktok", "TikTok"], ["facebook", "Facebook"]];
@@ -1902,6 +1907,7 @@ if (typeof module !== "undefined") module.exports = Core;
   ensureAuth().then((u) => {
     if (OP.view) renderView();
     if (u && ADMIN_UIDS.indexOf(u.uid) !== -1) { OP.isAdmin = true; startOpsWatcher(); }
+    else checkResumable();
   });
 
   /**
@@ -2080,7 +2086,7 @@ if (typeof module !== "undefined") module.exports = Core;
   let liveOpUnsub = null;
   function stopLiveOp() { if (liveOpUnsub) { liveOpUnsub(); liveOpUnsub = null; } }
   function go(view) { stopLiveOp(); OP.view = view; renderView(); window.scrollTo(0, 0); }
-  function exitToCalc() { OP.view = null; if (window.RemesasCalc) window.RemesasCalc.renderCalc(); }
+  function exitToCalc() { stopLiveOp(); OP.view = null; if (window.RemesasCalc) window.RemesasCalc.renderCalc(); checkResumable(); }
 
   function renderView() {
     const app = document.getElementById("app");
@@ -2353,6 +2359,7 @@ if (typeof module !== "undefined") module.exports = Core;
 
   function screenReview(app) {
     const q = OP.draftQuote, op = OP.op, bens = getBeneficiaries(op) || [];
+    if (OP.resumable && OP.resumable.id === op.id) OP.resumable = null; // ya no está incompleta: no hace falta seguir avisando
     app.innerHTML = header(tt("ops_v_title"), tt("ops_step", { n: 5 }), tt("ops_back")) + `
       <div class="card stack">
         <h3 style="margin:0">${esc(tt("ops_v_operation"))}</h3>
@@ -2422,6 +2429,8 @@ function screenDone(app) {
     if (m) return C.t("hist_pay_started", L, { method: m[1] });
     m = /^Pago repartido entre (\d+) beneficiarios\.$/.exec(note);
     if (m) return C.t("hist_split", L, { n: m[1] });
+    m = /^Administrador editó los datos del beneficiario (\d+)\.$/.exec(note);
+    if (m) return C.t("hist_ben_edited", L, { n: m[1] });
     return note; // nota libre (ej. la que el admin escribe al cargar una operación anterior): se deja tal cual
   }
   function historyList(hist, T) {
@@ -2501,7 +2510,7 @@ function screenDone(app) {
           <div class="hint" style="margin:4px 0 0">${esc(o.customer.name)} · ${esc(o.route.fromLabel)} → ${esc(o.route.toLabel)}</div>
           <div style="margin-top:4px">${esc(o.amounts.total)} ${esc(o.route.fromCurrency)}</div>
         </button>`).join("") : `<div class="empty">No hay operaciones con este filtro.</div>`;
-      $$(".op-row", app).forEach((b) => (b.onclick = () => { OP.admin.opDetail = b.dataset.id; go("opsDetail"); }));
+      $$(".op-row", app).forEach((b) => (b.onclick = () => { OP.admin.opDetail = b.dataset.id; OP.admin.editingBenIdx = null; go("opsDetail"); }));
     }
     loadAllOperations().then((ops) => { all = ops; renderList(); }).catch((e) => { console.error("listar operaciones:", e); $("#ol-list").innerHTML = `<div class="alert">${esc(friendlyError(e))}</div>`; });
   }
@@ -2543,9 +2552,21 @@ function screenDone(app) {
             <button class="ghost" id="od-view-receipt" style="width:100%">Ver comprobante</button>` : `<div class="hint">Aún no sube comprobante.</div>`}
           ${o.transferReceipt ? `<button class="ghost" id="od-view-transfer" style="width:100%;margin-top:6px">Ver comprobante de envío al beneficiario</button>` : ""}
         </div>
-        ${bens.length ? bens.map((ben, i) => `<div class="card stack"><h3 style="margin:0">${bens.length > 1 ? "Beneficiario " + (i + 1) + " — " + esc(ben.amount) + " " + esc(o.route.toCurrency) : "Beneficiario"}</h3>
-          ${Object.entries(ben.fields).filter((e) => e[1]).map((e) => `<div class="kv"><span>${esc(fieldLabel(e[0]))}</span><strong>${esc(e[1])}</strong></div>`).join("")}
-        </div>`).join("") : `<div class="card stack"><h3 style="margin:0">Beneficiario</h3><div class="hint">Aún no registrado.</div></div>`}
+        ${bens.length ? bens.map((ben, i) => {
+          const editing = OP.admin.editingBenIdx === i;
+          const title = bens.length > 1 ? "Beneficiario " + (i + 1) + " — " + esc(ben.amount) + " " + esc(o.route.toCurrency) : "Beneficiario";
+          if (!editing) {
+            return `<div class="card stack"><div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0">${title}</h3><button class="link-btn ben-edit" data-idx="${i}">✏️ Editar</button></div>
+              ${Object.entries(ben.fields).filter((e) => e[1]).map((e) => `<div class="kv"><span>${esc(fieldLabel(e[0]))}</span><strong>${esc(e[1])}</strong></div>`).join("")}
+            </div>`;
+          }
+          const editFields = beneficiaryFields(o.route.to, ben.method);
+          return `<div class="card stack"><h3 style="margin:0">${title}</h3>
+            <div class="stack" id="ben-edit-fields">${editFields.map((f) => fieldInput(f, ben.fields[f[0]])).join("")}</div>
+            <div class="err" id="ben-edit-err"></div>
+            <div class="grid2"><button class="ghost" id="ben-edit-cancel">Cancelar</button><button class="primary" id="ben-edit-save" data-idx="${i}">Guardar</button></div>
+          </div>`;
+        }).join("") : `<div class="card stack"><h3 style="margin:0">Beneficiario</h3><div class="hint">Aún no registrado.</div></div>`}
         <div class="card stack"><h3 style="margin:0">Acciones</h3>
           <div id="od-actions" class="stack">${actions || '<div class="hint">Esta operación ya está en un estado final.</div>'}</div>
           ${o.status === "PAYMENT_CONFIRMED" || o.status === "TRANSFER_IN_PROGRESS" ? `<label class="ghost file-btn">Subir comprobante de envío (foto)<input type="file" accept="image/*" class="sr" id="od-transfer-file"></label>` : ""}
@@ -2554,6 +2575,21 @@ function screenDone(app) {
         </div>
         <div class="card"><h3 style="margin-top:0">Historial</h3>${historyList(o.history)}</div>`;
       if ($("#od-view-receipt")) $("#od-view-receipt").onclick = () => openImagePreview(o.receipt.url);
+      $$(".ben-edit", app).forEach((btn) => (btn.onclick = () => { OP.admin.editingBenIdx = Number(btn.dataset.idx); screenAdminDetail(app); }));
+      if ($("#ben-edit-cancel")) $("#ben-edit-cancel").onclick = () => { OP.admin.editingBenIdx = null; screenAdminDetail(app); };
+      if ($("#ben-edit-save")) $("#ben-edit-save").onclick = async () => {
+        const idx = Number($("#ben-edit-save").dataset.idx);
+        const editFields = beneficiaryFields(o.route.to, bens[idx].method), data = {};
+        editFields.forEach((f) => { const k = f[0]; const el = $(`#ben-edit-fields [data-f="${k}"]`, app); data[k] = el ? el.value : (bens[idx].fields[k] || ""); });
+        for (const f of editFields) { const k = f[0], label = f[1], validate = f[3]; if (!validate(data[k], data)) return ($("#ben-edit-err").textContent = `Revisa el campo "${label}".`); }
+        $("#ben-edit-save").disabled = true;
+        try {
+          const updated = bens.slice(); updated[idx] = Object.assign({}, updated[idx], { fields: data });
+          OP.op = o; OP.opId = o.id;
+          await patchOperation({ beneficiaries: updated }, "Administrador editó los datos del beneficiario " + (idx + 1) + ".");
+          OP.admin.editingBenIdx = null; go("opsDetail");
+        } catch (e) { console.error("editar beneficiario:", e); $("#ben-edit-err").textContent = friendlyError(e); $("#ben-edit-save").disabled = false; }
+      };
       if ($("#od-view-transfer")) $("#od-view-transfer").onclick = () => openImagePreview(o.transferReceipt.url);
       $$("#od-actions button", app).forEach((b) => (b.onclick = async () => {
         b.disabled = true;
@@ -2810,8 +2846,70 @@ function screenDone(app) {
     };
   }
 
+  /* ---------- Retomar una operación que el cliente dejó a medias ---------- */
+  function getDismissed() { try { return JSON.parse(localStorage.getItem("remesas:dismissed_ops") || "[]"); } catch (e) { return []; } }
+  function dismissOp(id) { try { const d = getDismissed(); if (d.indexOf(id) === -1) { d.push(id); localStorage.setItem("remesas:dismissed_ops", JSON.stringify(d)); } } catch (e) { /* localStorage no disponible: no pasa nada grave */ } }
+
+  /** Reconstruye un objeto parecido a una cotización a partir de los datos ya guardados en la operación (sin recalcular con las tasas actuales). */
+  function quoteFromOperation(o) {
+    const flagOf = (label) => (label || "").split(" ")[0];
+    const nameOf = (label) => (label || "").split(" ").slice(1).join(" ");
+    const rate = o.rateSnapshot && o.rateSnapshot.rate;
+    const bcv = o.rateSnapshot && o.rateSnapshot.bcv;
+    return {
+      from: { id: o.route.from, flag: flagOf(o.route.fromLabel), name: nameOf(o.route.fromLabel) },
+      to: { id: o.route.to, flag: flagOf(o.route.toLabel), name: nameOf(o.route.toLabel) },
+      fromCurrency: o.route.fromCurrency, toCurrency: o.route.toCurrency,
+      shown: { send: new Decimal(o.amounts.send), receive: new Decimal(o.amounts.receive), fee: new Decimal(o.amounts.fee || 0), total: new Decimal(o.amounts.total) },
+      hasFee: o.amounts.hasFee, feeIncluded: o.amounts.feeIncluded, appliedPercent: o.amounts.appliedPercent, lowAmount: o.amounts.lowAmount, minRequired: null,
+      ratesUsed: rate ? [{ key: "x", reference: false, text: rate.text, value: rate.value, fullLabel: rate.label }].concat(bcv ? [{ key: "BCV_USD_VES", reference: true, value: bcv.value }] : []) : [],
+      intermediates: []
+    };
+  }
+
+  async function resumeOperation(o) {
+    OP.op = o; OP.opId = o.id;
+    OP.draftQuote = quoteFromOperation(o);
+    OP.multiBen = false; OP.benList = null; OP.chosenBenMethod = null; OP.benForm = {}; OP.saveBen = true;
+    try {
+      await loadAccounts();
+      if (o.payAccountId) OP.chosenAccount = OP.accounts.find((a) => a.id === o.payAccountId) || null;
+      const bens = getBeneficiaries(o);
+      if (bens) { go("review"); return; }
+      if (o.status === "RECEIPT_UPLOADED") { OP.myBeneficiaries = await loadMyBeneficiaries(o.route.to); go("beneficiary"); return; }
+      if (o.payAccountId) { go("receipt"); return; }
+      go("payment");
+    } catch (e) { console.error("retomar operación:", e); toast(friendlyError(e)); }
+  }
+
+  function injectResumeBanner() {
+    const old = document.getElementById("resume-banner"); if (old) old.remove();
+    if (OP.view || !OP.resumable) return; // solo se muestra sobre la calculadora
+    const panel = document.querySelector(".panel"); if (!panel || !panel.parentNode) return;
+    const o = OP.resumable;
+    const div = document.createElement("div");
+    div.id = "resume-banner"; div.className = "card stack"; div.style.marginBottom = "14px"; div.style.border = "2px solid var(--accent)";
+    div.innerHTML = `<div class="hint" style="margin:0">${esc(tt("ops_resume_hint"))}</div>
+      <strong>${opNum(o.number)} — ${esc(o.route.fromLabel)} → ${esc(o.route.toLabel)}</strong>
+      <div class="grid2"><button class="ghost" id="resume-discard">${esc(tt("ops_resume_discard"))}</button><button class="primary" id="resume-continue">${esc(tt("ops_resume_continue"))}</button></div>`;
+    panel.parentNode.insertBefore(div, panel);
+    document.getElementById("resume-continue").onclick = () => resumeOperation(o);
+    document.getElementById("resume-discard").onclick = () => { dismissOp(o.id); OP.resumable = null; div.remove(); };
+  }
+
+  async function checkResumable() {
+    if (OP.isAdmin || !OP.myUid) return;
+    try {
+      const dismissed = getDismissed();
+      const mine = await loadMyOperations();
+      OP.resumable = mine.find((o) => !getBeneficiaries(o) && TERMINAL.indexOf(o.status) === -1 && dismissed.indexOf(o.id) === -1) || null;
+    } catch (e) { OP.resumable = null; }
+    injectResumeBanner();
+  }
+
   window.RemesasOps = {
     onQuoteRendered: mountContinueButton,
+    onCalcRendered: injectResumeBanner,
     openMyOps: () => go("myops"),
     openAdmin: () => { ensureAuth().then((u) => { go(u && ADMIN_UIDS.indexOf(u.uid) !== -1 ? "opsList" : "opsLogin"); }); },
     isActive: () => !!OP.view
