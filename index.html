@@ -2301,6 +2301,7 @@ if (typeof module !== "undefined") module.exports = Core;
       </div>
       ${OP.benList.map((b, i) => {
         const fields = beneficiaryFields(country, b.method);
+        const saved = OP.myBeneficiaries.filter((sb) => sb.method === b.method);
         return `<div class="card stack ben-block" data-idx="${i}">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <h3 style="margin:0">${esc(tt("ops_b_split_n", { n: i + 1 }))}</h3>
@@ -2308,6 +2309,7 @@ if (typeof module !== "undefined") module.exports = Core;
           </div>
           <label class="field"><span>${esc(tt("ops_b_split_amount", { cur: q.toCurrency }))}</span><input class="input ben-amount" data-idx="${i}" inputmode="decimal" value="${esc(b.amount)}"></label>
           ${methods.length > 1 ? `<div class="chips">${methods.map((m) => `<button class="chip ben-method" data-idx="${i}" data-m="${m}" aria-pressed="${m === b.method}">${esc(methodLabelT(m))}</button>`).join("")}</div>` : ""}
+          ${saved.length ? `<label class="field"><span>${esc(tt("ops_b_saved"))}</span><select class="ben-saved" data-idx="${i}"><option value="">${esc(tt("ops_b_new"))}</option>${saved.map((sb) => `<option value="${sb.id}">${esc(sb.label)}</option>`).join("")}</select></label>` : ""}
           <div class="stack ben-fields" data-idx="${i}">${fields.map((f) => fieldInput(f, b.form[f[0]], true)).join("")}</div>
         </div>`;
       }).join("")}
@@ -2323,6 +2325,11 @@ if (typeof module !== "undefined") module.exports = Core;
     $$(".ben-remove", app).forEach((btn) => (btn.onclick = () => { OP.benList.splice(Number(btn.dataset.idx), 1); screenBeneficiary(app); }));
     $$(".ben-amount", app).forEach((el) => (el.oninput = () => { OP.benList[Number(el.dataset.idx)].amount = el.value; screenBeneficiary(app); }));
     $$(".ben-method", app).forEach((c) => (c.onclick = () => { const i = Number(c.dataset.idx); OP.benList[i].method = c.dataset.m; OP.benList[i].form = {}; screenBeneficiary(app); }));
+    $$(".ben-saved", app).forEach((sel) => (sel.onchange = (e) => {
+      const i = Number(sel.dataset.idx), chosen = OP.myBeneficiaries.find((sb) => sb.id === e.target.value);
+      OP.benList[i].form = chosen ? Object.assign({}, chosen.fields) : {};
+      screenBeneficiary(app);
+    }));
     $$(".ben-fields [data-f]", app).forEach((el) => (el.oninput = el.onchange = () => {
       const i = Number(el.closest(".ben-fields").dataset.idx);
       OP.benList[i].form[el.dataset.f] = el.value;
@@ -2664,6 +2671,26 @@ function screenDone(app) {
     return Object.keys(totals).sort().map((cur) => `<div class="kv"><span>${esc(cur)} <span class="hint" style="margin:0">(${counts[cur]})</span></span><strong>${esc(C.formatNumber(totals[cur], 2))}</strong></div>`).join("")
       || '<div class="hint">Sin movimientos.</div>';
   }
+  /** Descarga un archivo de texto (CSV) generado en el momento; funciona igual en el navegador y en la app. */
+  function downloadText(filename, text, mime) {
+    const blob = new Blob(["\uFEFF" + text], { type: mime || "text/csv;charset=utf-8;" }); // BOM: para que Excel muestre bien las tildes
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+  function csvCell(v) { const s = String(v == null ? "" : v); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+  function exportOperationsCSV(ops, rangeLabel) {
+    const header = ["Número", "Fecha", "Cliente", "Teléfono", "Origen", "Destino", "Moneda envío", "Monto enviado", "Comisión", "% aplicado", "Moneda recibido", "Monto recibido", "Estado", "Método de pago", "Manual"];
+    const rows = ops.slice().sort((a, b) => tsMillis(a.createdAt) - tsMillis(b.createdAt)).map((o) => [
+      o.number, new Date(tsMillis(o.createdAt)).toLocaleString("es"), o.customer.name, o.customer.phone,
+      o.route.fromLabel, o.route.toLabel, o.route.fromCurrency, o.amounts.total, o.amounts.fee,
+      o.amounts.appliedPercent !== undefined ? o.amounts.appliedPercent : "", o.route.toCurrency, o.amounts.receive,
+      (STATUS[o.status] || {}).label || o.status, METHOD_LABEL[o.payMethod] || "", o.manual ? "Sí" : "No"
+    ]);
+    const csv = [header].concat(rows).map((r) => r.map(csvCell).join(";")).join("\r\n");
+    downloadText("operaciones_" + rangeLabel + "_" + new Date().toISOString().slice(0, 10) + ".csv", csv);
+  }
+
   function screenAdminPayments(app) {
     if (!OP.admin.paymentsRange) OP.admin.paymentsRange = "30";
     app.innerHTML = header("Control de pagos") + `
@@ -2723,7 +2750,9 @@ function screenDone(app) {
           <h3 style="margin:0">🏦 Recibido por cuenta</h3>
           <div class="hint" style="margin:0">Para cuadrar contra tus cuentas reales.</div>
           ${accountRows}
-        </div>`;
+        </div>
+        <button class="ghost" id="pay-export" style="width:100%">⬇️ Exportar a CSV (${RANGE_LABEL[OP.admin.paymentsRange]})</button>`;
+      $("#pay-export").onclick = () => exportOperationsCSV(ops, RANGE_LABEL[OP.admin.paymentsRange]);
     }).catch((e) => { console.error("control de pagos:", e); $("#pay-body").innerHTML = `<div class="alert">${esc(friendlyError(e))}</div>`; });
   }
 
