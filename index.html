@@ -588,9 +588,28 @@ const Core = (function () {
     hist_split: { es: "Pago repartido entre {n} beneficiarios.", pt: "Pagamento dividido entre {n} beneficiários.", en: "Payment split among {n} beneficiaries." },
     hist_voided: { es: "Anulada por el administrador (carga manual incorrecta).", pt: "Anulada pelo administrador (carregamento manual incorreto).", en: "Voided by the admin (incorrect manual entry)." },
     hist_ben_edited: { es: "Administrador editó los datos del beneficiario {n}.", pt: "O administrador editou os dados do beneficiário {n}.", en: "The admin edited beneficiary {n}'s details." },
-    ops_resume_hint: { es: "Tienes una operación sin terminar:", pt: "Você tem uma operação sem terminar:", en: "You have an unfinished transaction:" },
-    ops_resume_continue: { es: "Continuar", pt: "Continuar", en: "Continue" },
+    ops_resume_hint: { es: "Tienes una operación sin terminar:", pt: "Você tem uma operação sem terminar:", en: "You have an unfinished transaction:" },    ops_resume_continue: { es: "Continuar", pt: "Continuar", en: "Continue" },
     ops_resume_discard: { es: "Descartar", pt: "Descartar", en: "Discard" },
+    acc_save: { es: "💾 Guardar mi cuenta (opcional)", pt: "💾 Salvar minha conta (opcional)", en: "💾 Save my account (optional)" },
+    acc_login_prompt: { es: "¿Ya tienes cuenta? Iniciar sesión", pt: "Já tem conta? Entrar", en: "Already have an account? Log in" },
+    acc_account_label: { es: "Cuenta", pt: "Conta", en: "Account" },
+    acc_logout: { es: "Cerrar sesión", pt: "Sair", en: "Log out" },
+    acc_link_title: { es: "Guardar mi cuenta", pt: "Salvar minha conta", en: "Save my account" },
+    acc_link_intro: { es: "Crea una contraseña para poder ver tus operaciones desde cualquier teléfono, con este mismo correo.", pt: "Crie uma senha para poder ver suas operações de qualquer telefone, com este mesmo email.", en: "Create a password so you can see your transactions from any phone, with this same email." },
+    acc_login_title: { es: "Iniciar sesión", pt: "Entrar", en: "Log in" },
+    acc_login_intro: { es: "Si ya guardaste tu cuenta antes, entra con tu correo y contraseña para ver tus operaciones.", pt: "Se você já salvou sua conta antes, entre com seu email e senha para ver suas operações.", en: "If you already saved your account before, sign in with your email and password to see your transactions." },
+    acc_email_label: { es: "Correo", pt: "Email", en: "Email" },
+    acc_password_label: { es: "Contraseña", pt: "Senha", en: "Password" },
+    acc_save_btn: { es: "Guardar", pt: "Salvar", en: "Save" },
+    acc_login_btn: { es: "Entrar", pt: "Entrar", en: "Log in" },
+    acc_err_email: { es: "Escribe un correo válido.", pt: "Digite um email válido.", en: "Enter a valid email." },
+    acc_err_password: { es: "La contraseña debe tener al menos 6 caracteres.", pt: "A senha deve ter pelo menos 6 caracteres.", en: "The password must be at least 6 characters." },
+    acc_err_in_use: { es: "Ese correo ya tiene una cuenta guardada.", pt: "Esse email já tem uma conta salva.", en: "That email already has an account saved." },
+    acc_err_login: { es: "Correo o contraseña incorrectos.", pt: "Email ou senha incorretos.", en: "Incorrect email or password." },
+    acc_saved_toast: { es: "Cuenta guardada ✓", pt: "Conta salva ✓", en: "Account saved ✓" },
+    acc_login_toast: { es: "Sesión iniciada ✓", pt: "Sessão iniciada ✓", en: "Signed in ✓" },
+    acc_switch_to_login: { es: "Iniciar sesión con este correo", pt: "Entrar com este email", en: "Log in with this email" },
+    acc_logout_toast: { es: "Sesión cerrada", pt: "Sessão encerrada", en: "Signed out" },
 
     status_pending_payment: { es: "Pendiente de pago", pt: "Pendente de pagamento", en: "Pending payment" },
     status_receipt_uploaded: { es: "Comprobante recibido", pt: "Comprovante recebido", en: "Receipt received" },
@@ -1943,6 +1962,7 @@ if (typeof module !== "undefined") module.exports = Core;
   }
   ensureAuth().then((u) => {
     if (OP.view) renderView();
+    else if (window.RemesasCalc) window.RemesasCalc.renderCalc(); // para que "Mis operaciones" aparezca apenas carga, sin esperar otra acción
     if (u && ADMIN_UIDS.indexOf(u.uid) !== -1) { OP.isAdmin = true; startOpsWatcher(); }
     else checkResumable();
   });
@@ -2131,7 +2151,7 @@ if (typeof module !== "undefined") module.exports = Core;
     const screens = {
       customer: screenCustomer, payment: screenPayment, receipt: screenReceipt,
       beneficiary: screenBeneficiary, review: screenReview, done: screenDone,
-      myops: screenMyOps, myopDetail: screenMyOpDetail,
+      myops: screenMyOps, myopDetail: screenMyOpDetail, accountLink: screenAccountLink, accountLogin: screenAccountLogin,
       opsLogin: screenAdminLogin, opsList: screenAdminList, opsDetail: screenAdminDetail, opsAccounts: screenAdminAccounts,
       opsPayments: screenAdminPayments, opsLoadPast: screenAdminLoadPast
     };
@@ -2436,9 +2456,31 @@ function screenDone(app) {
   }
 
   function statusBadge(status, T) { const s = STATUS[status] || { label: status, dot: "⚪" }; return `<span class="badge">${s.dot} ${esc(T ? statusLabelT(status) : s.label)}</span>`; }
+  function accountSection() {
+    const u = fb.auth().currentUser;
+    if (u && !u.isAnonymous) {
+      return `<div class="card stack">
+        <div class="hint" style="margin:0">${esc(tt("acc_account_label"))}: ${esc(u.email || "")}</div>
+        <button class="link-btn" id="acc-logout" style="padding:0">${esc(tt("acc_logout"))}</button>
+      </div>`;
+    }
+    return `<div class="card stack">
+      <button class="ghost" id="acc-link">${esc(tt("acc_save"))}</button>
+      <button class="link-btn" id="acc-login" style="padding:0">${esc(tt("acc_login_prompt"))}</button>
+    </div>`;
+  }
+  function wireAccountSection(app) {
+    if ($("#acc-link")) $("#acc-link").onclick = () => go("accountLink");
+    if ($("#acc-login")) $("#acc-login").onclick = () => go("accountLogin");
+    if ($("#acc-logout")) $("#acc-logout").onclick = async () => {
+      await fb.auth().signOut(); await fb.auth().signInAnonymously();
+      toast(tt("acc_logout_toast")); go("myops");
+    };
+  }
   function screenMyOps(app) {
-    app.innerHTML = header(tt("ops_mo_title"), null, tt("ops_back")) + `<div id="mo-list" class="stack"><div class="hint">${esc(tt("ops_mo_loading"))}</div></div>`;
+    app.innerHTML = header(tt("ops_mo_title"), null, tt("ops_back")) + accountSection() + `<div id="mo-list" class="stack"><div class="hint">${esc(tt("ops_mo_loading"))}</div></div>`;
     wireBack(app, exitToCalc);
+    wireAccountSection(app);
     loadMyOperations().then((ops) => {
       $("#mo-list").innerHTML = ops.length ? ops.map((o) => `
         <button class="card op-row" data-id="${o.id}" style="text-align:left;width:100%;border:1px solid var(--line);cursor:pointer">
@@ -2448,6 +2490,65 @@ function screenDone(app) {
         </button>`).join("") : `<div class="empty">${esc(tt("ops_mo_empty"))}</div>`;
       $$(".op-row", app).forEach((b) => (b.onclick = () => { OP.admin.opDetail = b.dataset.id; go("myopDetail"); }));
     }).catch((e) => { console.error("mis operaciones:", e); $("#mo-list").innerHTML = `<div class="alert">${esc(friendlyError(e))}</div>`; });
+  }
+
+  /** Convierte la sesión anónima actual en una cuenta permanente (mismo UID: no pierde historial). */
+  function screenAccountLink(app) {
+    app.innerHTML = header(tt("acc_link_title"), null, tt("ops_back")) + `
+      <div class="card stack">
+        <p class="hint" style="margin:0">${esc(tt("acc_link_intro"))}</p>
+        <label class="field"><span>${esc(tt("acc_email_label"))}</span><input class="input" id="al-email2" type="email" autocomplete="email"></label>
+        <label class="field"><span>${esc(tt("acc_password_label"))}</span><input class="input" id="al-pass2" type="password" autocomplete="new-password"></label>
+        <div class="err" id="al-err2"></div>
+        <button class="primary" id="al-save" style="margin-top:0">${esc(tt("acc_save_btn"))}</button>
+      </div>`;
+    wireBack(app, () => go("myops"));
+    $("#al-save").onclick = async () => {
+      const email = $("#al-email2").value.trim(), pass = $("#al-pass2").value;
+      if (!Valid.email(email)) return ($("#al-err2").textContent = tt("acc_err_email"));
+      if (pass.length < 6) return ($("#al-err2").textContent = tt("acc_err_password"));
+      $("#al-save").disabled = true;
+      try {
+        const cred = fb.auth.EmailAuthProvider.credential(email, pass);
+        await fb.auth().currentUser.linkWithCredential(cred);
+        toast(tt("acc_saved_toast"));
+        go("myops");
+      } catch (e) {
+        $("#al-save").disabled = false;
+        if (e && e.code === "auth/email-already-in-use") {
+          $("#al-err2").innerHTML = esc(tt("acc_err_in_use")) + ` <button class="link-btn" id="al-switch" style="padding:0">${esc(tt("acc_switch_to_login"))}</button>`;
+          $("#al-switch").onclick = () => { OP.pendingLoginEmail = email; go("accountLogin"); };
+        } else { $("#al-err2").textContent = friendlyError(e); }
+      }
+    };
+  }
+
+  /** Inicia sesión con una cuenta ya creada antes (en este u otro teléfono). */
+  function screenAccountLogin(app) {
+    const prefill = OP.pendingLoginEmail || ""; OP.pendingLoginEmail = null;
+    app.innerHTML = header(tt("acc_login_title"), null, tt("ops_back")) + `
+      <div class="card stack">
+        <p class="hint" style="margin:0">${esc(tt("acc_login_intro"))}</p>
+        <label class="field"><span>${esc(tt("acc_email_label"))}</span><input class="input" id="lo-email" type="email" autocomplete="email" value="${esc(prefill)}"></label>
+        <label class="field"><span>${esc(tt("acc_password_label"))}</span><input class="input" id="lo-pass" type="password" autocomplete="current-password"></label>
+        <div class="err" id="lo-err"></div>
+        <button class="primary" id="lo-go" style="margin-top:0">${esc(tt("acc_login_btn"))}</button>
+      </div>`;
+    wireBack(app, () => go("myops"));
+    $("#lo-go").onclick = async () => {
+      const email = $("#lo-email").value.trim(), pass = $("#lo-pass").value;
+      if (!Valid.email(email)) return ($("#lo-err").textContent = tt("acc_err_email"));
+      if (!pass) return ($("#lo-err").textContent = tt("acc_err_password"));
+      $("#lo-go").disabled = true;
+      try {
+        await fb.auth().signInWithEmailAndPassword(email, pass);
+        toast(tt("acc_login_toast"));
+        go("myops");
+      } catch (e) {
+        $("#lo-go").disabled = false;
+        $("#lo-err").textContent = (e && (e.code === "auth/wrong-password" || e.code === "auth/user-not-found" || e.code === "auth/invalid-credential")) ? tt("acc_err_login") : friendlyError(e);
+      }
+    };
   }
   /** Traduce una nota del historial (texto fijo en español) al idioma del cliente, si se reconoce. */
   const NOTE_MAP = {
