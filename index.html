@@ -610,6 +610,14 @@ const Core = (function () {
     acc_login_toast: { es: "Sesión iniciada ✓", pt: "Sessão iniciada ✓", en: "Signed in ✓" },
     acc_switch_to_login: { es: "Iniciar sesión con este correo", pt: "Entrar com este email", en: "Log in with this email" },
     acc_logout_toast: { es: "Sesión cerrada", pt: "Sessão encerrada", en: "Signed out" },
+    inapp_warning: { es: "Parece que abriste este enlace desde otra app (como WhatsApp o Instagram). Ahí a veces no se puede tomar o elegir una foto.",
+      pt: "Parece que você abriu este link de dentro de outro aplicativo (como WhatsApp ou Instagram). Às vezes não é possível tirar ou escolher uma foto ali.",
+      en: "It looks like you opened this link from inside another app (like WhatsApp or Instagram). Sometimes you can't take or choose a photo there." },
+    inapp_howto: { es: "Busca los tres puntos (⋮) o el ícono de navegador arriba de la pantalla y elige \"Abrir en el navegador\". Si no lo encuentras, copia este enlace y pégalo en Chrome.",
+      pt: "Procure os três pontos (⋮) ou o ícone do navegador na parte de cima da tela e escolha \"Abrir no navegador\". Se não encontrar, copie este link e cole no Chrome.",
+      en: "Look for the three dots (⋮) or browser icon at the top of the screen and choose \"Open in browser\". If you can't find it, copy this link and paste it into Chrome." },
+    inapp_copy: { es: "Copiar enlace", pt: "Copiar link", en: "Copy link" },
+    inapp_copied: { es: "Enlace copiado", pt: "Link copiado", en: "Link copied" },
 
     status_pending_payment: { es: "Pendiente de pago", pt: "Pendente de pagamento", en: "Pending payment" },
     status_receipt_uploaded: { es: "Comprobante recibido", pt: "Comprovante recebido", en: "Receipt received" },
@@ -2175,6 +2183,21 @@ if (typeof module !== "undefined") module.exports = Core;
       <div class="top-actions"><button class="icon-btn" id="op-back">${esc(back || "Volver")}</button></div></header>`;
   }
   function countryNameT(c) { return C.countryNameFor(c.id, c.name, lang()); }
+  /** Navegadores "prestados" dentro de otras apps (WhatsApp, Instagram, Facebook...) suelen bloquear
+   *  elegir o tomar una foto. Si se detecta uno, se muestra un aviso con cómo salir de ahí. */
+  function inAppBrowserBanner() {
+    const ua = navigator.userAgent || "";
+    if (!/FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Line\/|MicroMessenger|TikTok|musical_ly|Twitter/i.test(ua)) return "";
+    return `<div class="alert" style="margin-bottom:12px">
+      <div>${esc(tt("inapp_warning"))}</div>
+      <div style="margin-top:6px">${esc(tt("inapp_howto"))}</div>
+      <button class="ghost" id="inapp-copy" style="margin-top:10px;width:100%">${esc(tt("inapp_copy"))}</button>
+    </div>`;
+  }
+  function wireInAppBanner(app) {
+    const btn = $("#inapp-copy", app); if (!btn) return;
+    btn.onclick = () => { navigator.clipboard.writeText(location.href).then(() => toast(tt("inapp_copied"))).catch(() => toast(tt("ops_p_copy_error"))); };
+  }
   function fieldLabelT(k) { const key = "field_" + k; const v = tt(key); return v === key ? (FIELD_LABEL[k] || k) : v; }
   function methodLabelT(m) { const key = "method_" + m; const v = tt(key); return v === key ? (METHOD_LABEL[m] || m) : v; }
   function statusLabelT(status) { const key = "status_" + String(status).toLowerCase(); const v = tt(key); return v === key ? ((STATUS[status] || {}).label || status) : v; }
@@ -2197,7 +2220,7 @@ if (typeof module !== "undefined") module.exports = Core;
 
   function screenCustomer(app) {
     const q = OP.draftQuote;
-    app.innerHTML = header(tt("ops_c_title"), tt("ops_step", { n: 1 }), tt("ops_back")) + `
+    app.innerHTML = header(tt("ops_c_title"), tt("ops_step", { n: 1 }), tt("ops_back")) + inAppBrowserBanner() + `
       <div class="card stack">
         <p class="hint" style="margin:0">${esc(tt("ops_c_intro"))}</p>
         <label class="field"><span>${esc(tt("ops_c_name"))}</span><input class="input" id="c-name" autocomplete="name"></label>
@@ -2207,6 +2230,7 @@ if (typeof module !== "undefined") module.exports = Core;
         <button class="primary" id="c-next" style="margin-top:0">${esc(tt("ops_continue_btn"))}</button>
       </div>`;
     wireBack(app, exitToCalc);
+    wireInAppBanner(app);
     $("#c-next").onclick = async () => {
       const name = $("#c-name").value.trim(), phone = $("#c-phone").value.trim(), email = $("#c-email").value.trim();
       if (!Valid.notEmpty(name)) return ($("#c-err").textContent = tt("ops_err_name"));
@@ -2268,7 +2292,7 @@ if (typeof module !== "undefined") module.exports = Core;
 
   function screenReceipt(app) {
     const q = OP.draftQuote;
-    app.innerHTML = header(tt("ops_r_title"), tt("ops_step", { n: 3 }), tt("ops_back")) + `
+    app.innerHTML = header(tt("ops_r_title"), tt("ops_step", { n: 3 }), tt("ops_back")) + inAppBrowserBanner() + `
       <div class="card stack">
         <p class="hint" style="margin:0">${esc(tt("ops_r_intro"))}</p>
         <label class="ghost file-btn" style="min-height:70px">${OP.receiptFile ? esc(tt("ops_r_change")) : esc(tt("ops_r_pick"))}<input type="file" accept="image/*" capture="environment" class="sr" id="r-file"></label>
@@ -2281,6 +2305,7 @@ if (typeof module !== "undefined") module.exports = Core;
         <button class="primary" id="r-next" style="margin-top:0">${esc(tt("ops_r_next"))}</button>
       </div>`;
     wireBack(app, () => go("payment"));
+    wireInAppBanner(app);
     if (OP.receiptPreview) $("#r-preview").innerHTML = `<img src="${OP.receiptPreview}" style="max-width:100%;border-radius:12px;margin-top:8px">`;
     $("#r-file").onchange = (e) => {
       const f = e.target.files && e.target.files[0]; if (!f) return;
