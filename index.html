@@ -2349,6 +2349,16 @@ if (typeof module !== "undefined") module.exports = Core;
     return null;
   }
   const MAX_SPLIT = 5;
+  /** Recalcula y pinta SOLO el número de "restante por asignar", sin reconstruir toda la pantalla
+   *  (si se reconstruye todo en cada tecla, el campo de monto pierde el foco y se cierra el teclado). */
+  function updateRemaining() {
+    const el = document.getElementById("ben-remaining-val"); if (!el) return;
+    const total = OP.op.amounts.receive;
+    const assigned = OP.benList.reduce((s, b) => s.plus(new Decimal(C.parseNumber(b.amount) || 0)), new Decimal(0));
+    const remaining = new Decimal(total).minus(assigned);
+    el.textContent = remaining.toFixed(2) + " " + OP.draftQuote.toCurrency;
+    el.style.color = remaining.eq(0) ? "inherit" : "var(--danger)";
+  }
   function screenBeneficiary(app) {
     const q = OP.draftQuote, country = q.to.id;
     const methods = COUNTRY_METHODS[country].recv;
@@ -2422,7 +2432,7 @@ if (typeof module !== "undefined") module.exports = Core;
       }).join("")}
       <div class="card stack">
         ${OP.benList.length < MAX_SPLIT ? `<button class="ghost" id="ben-add">${esc(tt("ops_b_add"))}</button>` : ""}
-        <div class="kv" style="border:0"><span>${esc(tt("ops_b_remaining"))}</span><strong style="color:${remaining.eq(0) ? "inherit" : "var(--danger)"}">${esc(remaining.toFixed(2))} ${esc(q.toCurrency)}</strong></div>
+        <div class="kv" style="border:0"><span>${esc(tt("ops_b_remaining"))}</span><strong id="ben-remaining-val" style="color:${remaining.eq(0) ? "inherit" : "var(--danger)"}">${esc(remaining.toFixed(2))} ${esc(q.toCurrency)}</strong></div>
         <div class="err" id="b-err"></div>
         <button class="primary" id="b-next" style="margin-top:0">${esc(tt("ops_b_next"))}</button>
       </div>`;
@@ -2430,7 +2440,7 @@ if (typeof module !== "undefined") module.exports = Core;
     $("#b-multi").onchange = (e) => { OP.multiBen = e.target.checked; screenBeneficiary(app); };
     $("#ben-add").onclick = () => { OP.benList.push({ method: methods[0], amount: "", form: {} }); screenBeneficiary(app); };
     $$(".ben-remove", app).forEach((btn) => (btn.onclick = () => { OP.benList.splice(Number(btn.dataset.idx), 1); screenBeneficiary(app); }));
-    $$(".ben-amount", app).forEach((el) => (el.oninput = () => { OP.benList[Number(el.dataset.idx)].amount = el.value; screenBeneficiary(app); }));
+    $$(".ben-amount", app).forEach((el) => (el.oninput = () => { OP.benList[Number(el.dataset.idx)].amount = el.value; updateRemaining(); }));
     $$(".ben-method", app).forEach((c) => (c.onclick = () => { const i = Number(c.dataset.idx); OP.benList[i].method = c.dataset.m; OP.benList[i].form = {}; screenBeneficiary(app); }));
     $$(".ben-saved", app).forEach((sel) => (sel.onchange = (e) => {
       const i = Number(sel.dataset.idx), chosen = OP.myBeneficiaries.find((sb) => sb.id === e.target.value);
@@ -2442,7 +2452,9 @@ if (typeof module !== "undefined") module.exports = Core;
       OP.benList[i].form[el.dataset.f] = el.value;
     }));
     $("#b-next").onclick = async () => {
-      if (!remaining.eq(0)) return ($("#b-err").textContent = tt("ops_b_split_mismatch"));
+      const assignedNow = OP.benList.reduce((s, b) => s.plus(new Decimal(C.parseNumber(b.amount) || 0)), new Decimal(0));
+      const remainingNow = new Decimal(total).minus(assignedNow);
+      if (!remainingNow.eq(0)) return ($("#b-err").textContent = tt("ops_b_split_mismatch"));
       const list = [];
       for (let i = 0; i < OP.benList.length; i++) {
         const b = OP.benList[i], fields = beneficiaryFields(country, b.method), data = {};
